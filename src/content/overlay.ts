@@ -1,5 +1,6 @@
-import { HOST_ID } from "./value-parser";
+import { apiNameSuffix } from "../shared/url";
 import type { ValueMatch } from "../shared/types";
+import { HOST_ID } from "./value-parser";
 
 export interface OverlayClickDetail {
   match: ValueMatch;
@@ -44,7 +45,18 @@ export class Overlay {
       (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const target = event.target instanceof Element ? event.target.closest("[data-match-index]") : null;
+        const node = event.target instanceof Node ? event.target : null;
+        const from = node instanceof Element ? node : node?.parentElement;
+        const copyBtn = from?.closest("[data-copy-index]");
+        if (copyBtn) {
+          const index = Number(copyBtn.getAttribute("data-copy-index"));
+          const match = this.currentMatches[index];
+          if (match) {
+            void this.copyApiName(match, copyBtn);
+          }
+          return;
+        }
+        const target = from?.closest("[data-match-index]") ?? null;
         if (!target) {
           return;
         }
@@ -125,7 +137,7 @@ export class Overlay {
 
     const hint = document.createElement("div");
     hint.className = "hint";
-    hint.textContent = "Pause to pin, then click a URL.";
+    hint.textContent = "复制接口名后可粘贴到 Network 搜索。";
     this.card.appendChild(hint);
 
     matches.forEach((match, index) => {
@@ -179,12 +191,24 @@ export class Overlay {
     row.className = "row";
     row.setAttribute("data-match-index", String(index));
 
+    const head = document.createElement("div");
+    head.className = "head";
+
     const api = document.createElement("button");
     api.type = "button";
     api.className = "api";
     api.setAttribute("data-match-index", String(index));
     api.textContent = `${match.method} ${match.displayUrl}`;
     api.title = "Open this request and highlight the matching field";
+
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "copy";
+    copy.setAttribute("data-copy-index", String(index));
+    copy.textContent = "复制";
+    copy.title = `复制 ${apiNameSuffix(match.url)}，到 Network 里搜索`;
+
+    head.append(api, copy);
 
     const path = document.createElement("button");
     path.type = "button";
@@ -197,8 +221,18 @@ export class Overlay {
     meta.className = "meta";
     meta.textContent = `${match.rawValue} · ${match.matchType === "exact" ? "Exact" : "Normalized"}`;
 
-    row.append(api, path, meta);
+    row.append(head, path, meta);
     return row;
+  }
+
+  private async copyApiName(match: ValueMatch, button: Element): Promise<void> {
+    const name = apiNameSuffix(match.url);
+    const ok = await writeClipboard(name);
+    const label = button.textContent;
+    button.textContent = ok ? "已复制" : "失败";
+    window.setTimeout(() => {
+      button.textContent = label;
+    }, 1200);
   }
 
   private placeAtCursor(clientX: number, clientY: number): void {
@@ -220,6 +254,23 @@ export class Overlay {
     }
     this.card.style.left = `${Math.round(x)}px`;
     this.card.style.top = `${Math.round(y)}px`;
+  }
+}
+
+async function writeClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const input = document.createElement("textarea");
+    input.value = text;
+    input.setAttribute("readonly", "readonly");
+    input.style.cssText = "position:fixed;left:-9999px;top:0";
+    document.documentElement.appendChild(input);
+    input.select();
+    const ok = document.execCommand("copy");
+    input.remove();
+    return ok;
   }
 }
 
@@ -282,10 +333,28 @@ const styles = `
   .row:hover {
     border-color: #8ab4f8;
   }
+  .head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .copy {
+    flex: none;
+    margin-left: auto;
+    border: 0;
+    border-radius: 4px;
+    padding: 2px 6px;
+    background: #3c4043;
+    color: #e8eaed;
+    font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .copy:hover {
+    background: #5f6368;
+  }
   .api,
   .path {
     display: block;
-    width: 100%;
     padding: 0;
     border: 0;
     background: transparent;
@@ -294,6 +363,11 @@ const styles = `
     color: inherit;
     font: inherit;
   }
+  .api {
+    flex: 1;
+    min-width: 0;
+  }
+  .head .api,
   .api {
     color: #8ab4f8;
     text-decoration: underline;

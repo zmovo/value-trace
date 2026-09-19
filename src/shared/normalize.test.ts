@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { flattenJson } from "./json-flatten";
 import { extractValues, normalizeValue, primaryKeyOf } from "./normalize";
+import { apiNameSuffix } from "./url";
 import { ValueIndex } from "./value-index";
 import type { CapturedResponse } from "./types";
 
@@ -47,6 +48,14 @@ describe("flattenJson", () => {
     const paths = entries.map((e) => e.jsonPath);
     expect(paths).toContain("$.data.entryCount");
     expect(paths).toContain("$.data.list[0].count");
+  });
+});
+
+describe("apiNameSuffix", () => {
+  it("keeps the last path segment for Network search", () => {
+    expect(apiNameSuffix("https://host/api/v1/queue/history/query/zone/historyTrends")).toBe(
+      "historyTrends",
+    );
   });
 });
 

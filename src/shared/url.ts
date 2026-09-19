@@ -27,6 +27,18 @@ export function urlAffinity(apiUrl: string, pageUrl: string): number {
   }
 }
 
+/** Last path segment, e.g. /queue/zone/historyTrends → historyTrends. */
+export function apiNameSuffix(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? parsed.pathname;
+  } catch {
+    const parts = url.split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? url;
+  }
+}
+
 /** Same endpoint despite query tokens used for polling / cache busting. */
 export function canonicalRequestUrl(url: string): string {
   try {
