@@ -91,25 +91,8 @@ export class Overlay {
     return Boolean(this.card && !this.card.hidden);
   }
 
-  isLocked(): boolean {
-    return this.locked;
-  }
-
   isPointerInside(): boolean {
     return this.pointerInside;
-  }
-
-  isPointerNear(clientX: number, clientY: number, pad = 20): boolean {
-    if (!this.card || this.card.hidden || !this.locked) {
-      return false;
-    }
-    const rect = this.card.getBoundingClientRect();
-    return (
-      clientX >= rect.left - pad &&
-      clientX <= rect.right + pad &&
-      clientY >= rect.top - pad &&
-      clientY <= rect.bottom + pad
-    );
   }
 
   show(matches: ValueMatch[], key: string, clientX: number, clientY: number): void {

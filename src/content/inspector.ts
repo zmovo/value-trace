@@ -6,8 +6,9 @@ import { Overlay } from "./overlay";
 import { isExtensionNode, resolveHoveredValue } from "./value-parser";
 
 const MOVE_THROTTLE_MS = 32;
-const HIDE_DELAY_MS = 280;
+const HIDE_DELAY_MS = 220;
 const PIN_AFTER_MS = 260;
+const VALUE_PAD = 8;
 
 export class Inspector {
   private readonly overlay = new Overlay();
@@ -17,6 +18,7 @@ export class Inspector {
   private hideTimer: number | null = null;
   private pinTimer: number | null = null;
   private tabId: number | null = null;
+  private hoverBounds: { left: number; top: number; right: number; bottom: number } | null = null;
 
   start(tabId?: number): void {
     if (this.active) {
@@ -29,6 +31,8 @@ export class Inspector {
     this.overlay.setInspecting(true);
     document.addEventListener("mousemove", this.onMove, true);
     document.addEventListener("mouseover", this.onMove, true);
+    document.addEventListener("keydown", this.onKeyDown, true);
+    document.documentElement.addEventListener("mouseleave", this.onPageLeave);
     document.documentElement.style.cursor = "crosshair";
     log("Inspect mode on");
   }
@@ -44,10 +48,28 @@ export class Inspector {
     this.resetHover();
     document.removeEventListener("mousemove", this.onMove, true);
     document.removeEventListener("mouseover", this.onMove, true);
+    document.removeEventListener("keydown", this.onKeyDown, true);
+    document.documentElement.removeEventListener("mouseleave", this.onPageLeave);
     document.documentElement.style.cursor = "";
     this.overlay.destroy();
     log("Inspect mode off");
   }
+
+  private onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || !this.overlay.isVisible()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.dismiss();
+  };
+
+  private onPageLeave = (): void => {
+    if (this.overlay.isPointerInside()) {
+      return;
+    }
+    this.dismiss();
+  };
 
   private onMove = (event: MouseEvent): void => {
     if (!this.active) {
@@ -59,9 +81,8 @@ export class Inspector {
       this.overlay.lock();
       return;
     }
-    if (this.overlay.isLocked() && this.overlay.isPointerNear(event.clientX, event.clientY)) {
-      this.clearHideTimer();
-      return;
+    if (this.overlay.isVisible() && !this.isOverHoveredValue(event.clientX, event.clientY)) {
+      this.scheduleHide();
     }
     const now = Date.now();
     if (now - this.lastMove < MOVE_THROTTLE_MS) {
@@ -74,7 +95,15 @@ export class Inspector {
   private async inspect(event: MouseEvent): Promise<void> {
     try {
       const target = document.elementFromPoint(event.clientX, event.clientY);
-      if (!target || isExtensionNode(target) || this.overlay.isPointerInside()) {
+      if (this.overlay.isPointerInside()) {
+        this.clearHideTimer();
+        return;
+      }
+      if (!target) {
+        this.scheduleHide();
+        return;
+      }
+      if (isExtensionNode(target)) {
         this.clearHideTimer();
         return;
       }
@@ -86,19 +115,27 @@ export class Inspector {
       }
 
       const lookupKey = `${resolved.value.primaryKey}|${resolved.value.rawText}`;
-      if (lookupKey === this.lastKey && this.overlay.isVisible()) {
+      const overValue = this.isOverHoveredValue(event.clientX, event.clientY);
+      if (lookupKey === this.lastKey && this.overlay.isVisible() && overValue) {
         this.clearHideTimer();
+        this.rememberHover(resolved.element);
         this.overlay.followCursor(event.clientX, event.clientY);
         this.armPin();
+        return;
+      }
+      if (lookupKey === this.lastKey && this.overlay.isVisible() && !overValue) {
+        this.scheduleHide();
         return;
       }
 
       log("UI value detected:", resolved.value.primaryKey);
       const matches = await this.lookup(resolved.value.lookupKeys, resolved.value.primaryKey);
       this.lastKey = lookupKey;
+      this.rememberHover(resolved.element);
       this.clearHideTimer();
       if (matches.length === 0) {
         this.overlay.hideCard();
+        this.resetHover();
         return;
       }
       this.overlay.unlock();
@@ -134,9 +171,15 @@ export class Inspector {
       if (this.overlay.isPointerInside()) {
         return;
       }
-      this.overlay.hideCard();
-      this.resetHover();
+      this.dismiss();
     }, HIDE_DELAY_MS);
+  }
+
+  private dismiss(): void {
+    this.clearHideTimer();
+    this.clearPinTimer();
+    this.overlay.hideCard();
+    this.resetHover();
   }
 
   private clearHideTimer(): void {
@@ -155,6 +198,30 @@ export class Inspector {
 
   private resetHover(): void {
     this.lastKey = "";
+    this.hoverBounds = null;
+  }
+
+  private rememberHover(element: Element): void {
+    const rect = element.getBoundingClientRect();
+    this.hoverBounds = {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+    };
+  }
+
+  private isOverHoveredValue(clientX: number, clientY: number): boolean {
+    const bounds = this.hoverBounds;
+    if (!bounds) {
+      return false;
+    }
+    return (
+      clientX >= bounds.left - VALUE_PAD &&
+      clientX <= bounds.right + VALUE_PAD &&
+      clientY >= bounds.top - VALUE_PAD &&
+      clientY <= bounds.bottom + VALUE_PAD
+    );
   }
 
   private lookup(keys: string[], primaryKey: string): Promise<ValueMatch[]> {
