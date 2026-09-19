@@ -27,6 +27,21 @@ export function urlAffinity(apiUrl: string, pageUrl: string): number {
   }
 }
 
+/** Same endpoint despite query tokens used for polling / cache busting. */
+export function canonicalRequestUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
+/** $.data[0].count and $.data[12].count are the same field in a list. */
+export function generalizeJsonPath(path: string): string {
+  return path.replace(/\[\d+\]/g, "[*]");
+}
+
 export function isXhrOrFetch(resourceType: string): boolean {
   const type = resourceType.toLowerCase();
   return type === "xhr" || type === "fetch";

@@ -94,6 +94,16 @@ describe("ValueIndex", () => {
     expect(matches).toHaveLength(2);
     expect(matches[0].url).toContain("/mock/dashboard");
   });
+
+  it("collapses the same API field across polls and array indexes", () => {
+    const index = new ValueIndex();
+    index.addCaptured(capture("r1", "/mock/dashboard?t=1", "$.data[0].entryCount", 66860, 10));
+    index.addCaptured(capture("r2", "/mock/dashboard?t=2", "$.data[3].entryCount", 66860, 20));
+    index.addCaptured(capture("r3", "/mock/dashboard?t=3", "$.data[3].entryCount", 66860, 30));
+    const matches = index.lookup(["66860"], "66860", "http://localhost:3456/");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].requestId).toBe("r3");
+  });
 });
 
 function capture(

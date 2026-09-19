@@ -1,5 +1,5 @@
 import { primaryKeyOf } from "./normalize";
-import { isXhrOrFetch, toDisplayUrl, urlAffinity } from "./url";
+import { canonicalRequestUrl, generalizeJsonPath, isXhrOrFetch, toDisplayUrl, urlAffinity } from "./url";
 import type {
   CapturedResponse,
   IndexedValue,
@@ -86,7 +86,7 @@ export class ValueIndex {
       }
     }
 
-    return [...merged.values()].sort((a, b) => compareMatches(a, b, pageUrl));
+    return collapseMatches([...merged.values()], pageUrl);
   }
 
   getSelection(requestId: string, jsonPath: string): PanelSelection | null {
@@ -126,6 +126,22 @@ export class ValueIndex {
     }
     return null;
   }
+}
+
+/**
+ * One UI number should not explode into 100 rows.
+ * Keep the latest hit per API + field, and treat array indexes as the same field.
+ */
+function collapseMatches(matches: ValueMatch[], pageUrl: string): ValueMatch[] {
+  const byField = new Map<string, ValueMatch>();
+  for (const match of matches) {
+    const key = `${match.method}|${canonicalRequestUrl(match.url)}|${generalizeJsonPath(match.jsonPath)}`;
+    const existing = byField.get(key);
+    if (!existing || betterMatch(match, existing, pageUrl)) {
+      byField.set(key, match);
+    }
+  }
+  return [...byField.values()].sort((a, b) => compareMatches(a, b, pageUrl));
 }
 
 function classifyMatch(rawValue: string | number, primaryKey: string): MatchType {

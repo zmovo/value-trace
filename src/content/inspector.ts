@@ -5,16 +5,17 @@ import type { LookupResult, ValueMatch } from "../shared/types";
 import { Overlay } from "./overlay";
 import { isExtensionNode, resolveHoveredValue } from "./value-parser";
 
-const MOVE_THROTTLE_MS = 40;
+const MOVE_THROTTLE_MS = 32;
 const HIDE_DELAY_MS = 280;
+const PIN_AFTER_MS = 260;
 
 export class Inspector {
   private readonly overlay = new Overlay();
   private active = false;
   private lastKey = "";
   private lastMove = 0;
-  private lastElement: Element | null = null;
   private hideTimer: number | null = null;
+  private pinTimer: number | null = null;
   private tabId: number | null = null;
 
   start(tabId?: number): void {
@@ -28,13 +29,13 @@ export class Inspector {
     this.overlay.setInspecting(true);
     document.addEventListener("mousemove", this.onMove, true);
     document.addEventListener("mouseover", this.onMove, true);
-    document.addEventListener("click", this.onClick, true);
     document.documentElement.style.cursor = "crosshair";
     log("Inspect mode on");
   }
 
   stop(): void {
     this.clearHideTimer();
+    this.clearPinTimer();
     if (!this.active) {
       this.overlay.destroy();
       return;
@@ -43,7 +44,6 @@ export class Inspector {
     this.resetHover();
     document.removeEventListener("mousemove", this.onMove, true);
     document.removeEventListener("mouseover", this.onMove, true);
-    document.removeEventListener("click", this.onClick, true);
     document.documentElement.style.cursor = "";
     this.overlay.destroy();
     log("Inspect mode off");
@@ -53,11 +53,13 @@ export class Inspector {
     if (!this.active) {
       return;
     }
-    if (
-      isExtensionNode(event.target) ||
-      this.overlay.isPointerInside() ||
-      this.overlay.isPointerNear(event.clientX, event.clientY)
-    ) {
+    if (this.overlay.isPointerInside()) {
+      this.clearHideTimer();
+      this.clearPinTimer();
+      this.overlay.lock();
+      return;
+    }
+    if (this.overlay.isLocked() && this.overlay.isPointerNear(event.clientX, event.clientY)) {
       this.clearHideTimer();
       return;
     }
@@ -69,25 +71,10 @@ export class Inspector {
     void this.inspect(event);
   };
 
-  private onClick = (event: MouseEvent): void => {
-    if (!this.active) {
-      return;
-    }
-    if (this.overlay.contains(event.target) || this.overlay.isPointerInside()) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  };
-
   private async inspect(event: MouseEvent): Promise<void> {
     try {
       const target = document.elementFromPoint(event.clientX, event.clientY);
       if (!target || isExtensionNode(target) || this.overlay.isPointerInside()) {
-        this.clearHideTimer();
-        return;
-      }
-
-      if (this.lastElement && this.lastElement.contains(target) && this.overlay.isVisible()) {
         this.clearHideTimer();
         return;
       }
@@ -101,19 +88,22 @@ export class Inspector {
       const lookupKey = `${resolved.value.primaryKey}|${resolved.value.rawText}`;
       if (lookupKey === this.lastKey && this.overlay.isVisible()) {
         this.clearHideTimer();
+        this.overlay.followCursor(event.clientX, event.clientY);
+        this.armPin();
         return;
       }
 
       log("UI value detected:", resolved.value.primaryKey);
       const matches = await this.lookup(resolved.value.lookupKeys, resolved.value.primaryKey);
       this.lastKey = lookupKey;
-      this.lastElement = resolved.element;
       this.clearHideTimer();
       if (matches.length === 0) {
         this.overlay.hideCard();
         return;
       }
-      this.overlay.show(matches, resolved.element.getBoundingClientRect(), lookupKey);
+      this.overlay.unlock();
+      this.overlay.show(matches, lookupKey, event.clientX, event.clientY);
+      this.armPin();
     } catch (error) {
       if (isInvalidatedError(error)) {
         this.stop();
@@ -123,7 +113,16 @@ export class Inspector {
     }
   }
 
+  private armPin(): void {
+    this.clearPinTimer();
+    this.pinTimer = window.setTimeout(() => {
+      this.pinTimer = null;
+      this.overlay.lock();
+    }, PIN_AFTER_MS);
+  }
+
   private scheduleHide(): void {
+    this.clearPinTimer();
     if (this.hideTimer != null || !this.overlay.isVisible()) {
       if (!this.overlay.isVisible()) {
         this.resetHover();
@@ -147,9 +146,15 @@ export class Inspector {
     }
   }
 
+  private clearPinTimer(): void {
+    if (this.pinTimer != null) {
+      window.clearTimeout(this.pinTimer);
+      this.pinTimer = null;
+    }
+  }
+
   private resetHover(): void {
     this.lastKey = "";
-    this.lastElement = null;
   }
 
   private lookup(keys: string[], primaryKey: string): Promise<ValueMatch[]> {

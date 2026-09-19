@@ -12,6 +12,8 @@ export class Overlay {
   private onSelect: ((detail: OverlayClickDetail) => void) | null = null;
   private pinnedKey = "";
   private pointerInside = false;
+  private locked = false;
+  private currentMatches: ValueMatch[] = [];
 
   mount(onSelect: (detail: OverlayClickDetail) => void): void {
     this.onSelect = onSelect;
@@ -32,10 +34,31 @@ export class Overlay {
     this.card = shadow.querySelector(".card");
     this.card?.addEventListener("pointerenter", () => {
       this.pointerInside = true;
+      this.locked = true;
     });
     this.card?.addEventListener("pointerleave", () => {
       this.pointerInside = false;
     });
+    this.card?.addEventListener(
+      "pointerdown",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const target = event.target instanceof Element ? event.target.closest("[data-match-index]") : null;
+        if (!target) {
+          return;
+        }
+        const index = Number(target.getAttribute("data-match-index"));
+        const match = this.currentMatches[index];
+        if (!match) {
+          return;
+        }
+        target.classList.add("pressed");
+        window.setTimeout(() => target.classList.remove("pressed"), 180);
+        this.onSelect?.({ match });
+      },
+      true,
+    );
     document.documentElement.appendChild(host);
   }
 
@@ -46,7 +69,7 @@ export class Overlay {
     }
     banner.hidden = !active;
     banner.textContent = active
-      ? "ValueTrace inspect mode — hover a number, then click the URL in the popup."
+      ? "ValueTrace inspect mode — pause on a number to pin the popup, then click a URL."
       : "";
   }
 
@@ -54,12 +77,16 @@ export class Overlay {
     return Boolean(this.card && !this.card.hidden);
   }
 
+  isLocked(): boolean {
+    return this.locked;
+  }
+
   isPointerInside(): boolean {
     return this.pointerInside;
   }
 
-  isPointerNear(clientX: number, clientY: number, pad = 28): boolean {
-    if (!this.card || this.card.hidden) {
+  isPointerNear(clientX: number, clientY: number, pad = 20): boolean {
+    if (!this.card || this.card.hidden || !this.locked) {
       return false;
     }
     const rect = this.card.getBoundingClientRect();
@@ -71,15 +98,18 @@ export class Overlay {
     );
   }
 
-  show(matches: ValueMatch[], anchor: DOMRect, key: string): void {
+  show(matches: ValueMatch[], key: string, clientX: number, clientY: number): void {
     if (!this.card || !this.shadow) {
       return;
     }
     if (this.pinnedKey === key && !this.card.hidden) {
+      this.followCursor(clientX, clientY);
       return;
     }
 
     this.pinnedKey = key;
+    this.locked = false;
+    this.currentMatches = matches;
     this.card.hidden = false;
     this.card.replaceChildren();
 
@@ -95,14 +125,29 @@ export class Overlay {
 
     const hint = document.createElement("div");
     hint.className = "hint";
-    hint.textContent = "Click a URL to open the request and jump to the field.";
+    hint.textContent = "Pause to pin, then click a URL.";
     this.card.appendChild(hint);
 
-    for (const match of matches) {
-      this.card.appendChild(this.renderRow(match));
-    }
+    matches.forEach((match, index) => {
+      this.card?.appendChild(this.renderRow(match, index));
+    });
 
-    this.placeNear(anchor);
+    this.placeAtCursor(clientX, clientY);
+  }
+
+  followCursor(clientX: number, clientY: number): void {
+    if (this.locked || this.pointerInside || !this.card || this.card.hidden) {
+      return;
+    }
+    this.placeAtCursor(clientX, clientY);
+  }
+
+  lock(): void {
+    this.locked = true;
+  }
+
+  unlock(): void {
+    this.locked = false;
   }
 
   hideCard(): void {
@@ -112,6 +157,8 @@ export class Overlay {
     }
     this.pinnedKey = "";
     this.pointerInside = false;
+    this.locked = false;
+    this.currentMatches = [];
   }
 
   contains(target: EventTarget | null): boolean {
@@ -127,31 +174,24 @@ export class Overlay {
     this.onSelect = null;
   }
 
-  private renderRow(match: ValueMatch): HTMLDivElement {
+  private renderRow(match: ValueMatch, index: number): HTMLDivElement {
     const row = document.createElement("div");
     row.className = "row";
+    row.setAttribute("data-match-index", String(index));
 
     const api = document.createElement("button");
     api.type = "button";
     api.className = "api";
+    api.setAttribute("data-match-index", String(index));
     api.textContent = `${match.method} ${match.displayUrl}`;
     api.title = "Open this request and highlight the matching field";
-    api.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.onSelect?.({ match });
-    });
 
     const path = document.createElement("button");
     path.type = "button";
     path.className = "path";
+    path.setAttribute("data-match-index", String(index));
     path.textContent = match.jsonPath;
     path.title = "Highlight this field in the response";
-    path.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.onSelect?.({ match });
-    });
 
     const meta = document.createElement("div");
     meta.className = "meta";
@@ -161,19 +201,19 @@ export class Overlay {
     return row;
   }
 
-  private placeNear(anchor: DOMRect): void {
+  private placeAtCursor(clientX: number, clientY: number): void {
     if (!this.card) {
       return;
     }
     const width = 320;
     const height = this.card.getBoundingClientRect().height || 160;
-    let x = anchor.left;
-    let y = anchor.bottom + 6;
-    if (y + height > window.innerHeight - 8) {
-      y = Math.max(8, anchor.top - height - 6);
-    }
+    let x = clientX + 16;
+    let y = clientY + 18;
     if (x + width > window.innerWidth - 8) {
-      x = Math.max(8, window.innerWidth - width - 8);
+      x = Math.max(8, clientX - width - 12);
+    }
+    if (y + height > window.innerHeight - 8) {
+      y = Math.max(8, clientY - height - 12);
     }
     if (x < 8) {
       x = 8;
@@ -260,8 +300,12 @@ const styles = `
     word-break: break-all;
   }
   .api:hover,
-  .path:hover {
+  .path:hover,
+  .pressed {
     color: #c2d7ff;
+  }
+  .pressed {
+    text-decoration: none;
   }
   .path {
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
