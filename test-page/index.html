@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ValueTrace Mock Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">ValueTrace acceptance page</p>
+        <h1>Venue Dashboard</h1>
+        <p class="hint">
+          Open DevTools first, stay on the <strong>API Source</strong> tab, then click
+          <strong>Reload APIs</strong>. Start Inspect and hover <strong>66,860</strong>.
+        </p>
+        <button id="reload" type="button">Reload APIs</button>
+      </header>
+
+      <section class="grid">
+        <article class="card">
+          <div class="label">Entry Guests</div>
+          <div class="value" id="entry">—</div>
+        </article>
+        <article class="card">
+          <div class="label">Exit Guests</div>
+          <div class="value" id="exit">—</div>
+        </article>
+        <article class="card">
+          <div class="label">Occupancy</div>
+          <div class="value" id="occupancy">—</div>
+        </article>
+        <article class="card">
+          <div class="label">Revenue</div>
+          <div class="value" id="revenue">—</div>
+        </article>
+        <article class="card">
+          <div class="label">Peak Hour</div>
+          <div class="value" id="compact">—</div>
+        </article>
+      </section>
+
+      <p id="load-state" class="state">Loading /mock/dashboard…</p>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

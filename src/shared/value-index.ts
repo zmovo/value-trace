@@ -1,0 +1,151 @@
+import { primaryKeyOf } from "./normalize";
+import { isXhrOrFetch, toDisplayUrl, urlAffinity } from "./url";
+import type {
+  CapturedResponse,
+  IndexedValue,
+  MatchType,
+  PanelSelection,
+  RequestMeta,
+  ValueMatch,
+} from "./types";
+
+const MAX_MATCHES_PER_KEY = 100;
+
+interface StoredRequest {
+  meta: RequestMeta;
+  responseBody: unknown;
+}
+
+/**
+ * Reverse index: normalizedValue → matches.
+ * Built when a response arrives so hover lookups stay O(1).
+ *
+ * Future derived matches (e.g. 66860 - 52113 = 14747) can be appended
+ * in addCaptured without changing Inspector / Overlay contracts.
+ */
+export class ValueIndex {
+  private readonly byValue = new Map<string, IndexedValue[]>();
+  private readonly requests = new Map<string, StoredRequest>();
+  private indexedValues = 0;
+
+  addCaptured(captured: CapturedResponse): number {
+    this.requests.set(captured.meta.requestId, {
+      meta: captured.meta,
+      responseBody: captured.responseBody,
+    });
+
+    let added = 0;
+    for (const entry of captured.entries) {
+      const record: IndexedValue = {
+        requestId: captured.meta.requestId,
+        url: captured.meta.url,
+        method: captured.meta.method,
+        status: captured.meta.status,
+        durationMs: captured.meta.durationMs,
+        jsonPath: entry.jsonPath,
+        rawValue: entry.rawValue,
+        timestamp: captured.meta.timestamp,
+        resourceType: captured.meta.resourceType,
+      };
+
+      for (const key of entry.normalizedValues) {
+        const list = this.byValue.get(key) ?? [];
+        if (list.length >= MAX_MATCHES_PER_KEY) {
+          list.shift();
+        }
+        list.push(record);
+        this.byValue.set(key, list);
+        added += 1;
+      }
+      this.indexedValues += 1;
+    }
+
+    return added;
+  }
+
+  lookup(keys: string[], primaryKey: string, pageUrl: string): ValueMatch[] {
+    const merged = new Map<string, ValueMatch>();
+
+    for (const key of keys) {
+      const hits = this.byValue.get(key);
+      if (!hits) {
+        continue;
+      }
+      for (const item of hits) {
+        const id = `${item.requestId}|${item.jsonPath}`;
+        const matchType = classifyMatch(item.rawValue, primaryKey);
+        const next: ValueMatch = {
+          ...item,
+          displayUrl: toDisplayUrl(item.url),
+          matchType,
+        };
+        const existing = merged.get(id);
+        if (!existing || betterMatch(next, existing, pageUrl)) {
+          merged.set(id, next);
+        }
+      }
+    }
+
+    return [...merged.values()].sort((a, b) => compareMatches(a, b, pageUrl));
+  }
+
+  getSelection(requestId: string, jsonPath: string): PanelSelection | null {
+    const stored = this.requests.get(requestId);
+    if (!stored) {
+      return null;
+    }
+
+    const hit = this.lookupByPath(requestId, jsonPath);
+    return {
+      meta: stored.meta,
+      responseBody: stored.responseBody,
+      jsonPath,
+      rawValue: hit?.rawValue ?? "",
+    };
+  }
+
+  clear(): void {
+    this.byValue.clear();
+    this.requests.clear();
+    this.indexedValues = 0;
+  }
+
+  stats(): { requestCount: number; valueCount: number } {
+    return {
+      requestCount: this.requests.size,
+      valueCount: this.indexedValues,
+    };
+  }
+
+  private lookupByPath(requestId: string, jsonPath: string): IndexedValue | null {
+    for (const list of this.byValue.values()) {
+      const found = list.find((item) => item.requestId === requestId && item.jsonPath === jsonPath);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+}
+
+function classifyMatch(rawValue: string | number, primaryKey: string): MatchType {
+  return primaryKeyOf(rawValue) === primaryKey ? "exact" : "normalized";
+}
+
+function betterMatch(next: ValueMatch, existing: ValueMatch, pageUrl: string): boolean {
+  return compareMatches(next, existing, pageUrl) < 0;
+}
+
+function compareMatches(a: ValueMatch, b: ValueMatch, pageUrl: string): number {
+  if (a.matchType !== b.matchType) {
+    return a.matchType === "exact" ? -1 : 1;
+  }
+  const xhrDelta = Number(isXhrOrFetch(b.resourceType)) - Number(isXhrOrFetch(a.resourceType));
+  if (xhrDelta !== 0) {
+    return xhrDelta;
+  }
+  if (a.timestamp !== b.timestamp) {
+    return b.timestamp - a.timestamp;
+  }
+  return urlAffinity(b.url, pageUrl) - urlAffinity(a.url, pageUrl);
+}

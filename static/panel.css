@@ -1,0 +1,152 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: #202124;
+  color: #e8eaed;
+  font: 12px/1.45 ui-sans-serif, system-ui, sans-serif;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #3c4043;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand span {
+  color: #9aa0a6;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: #8ab4f8;
+  color: #202124;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#stop {
+  background: #5f6368;
+  color: #e8eaed;
+}
+
+.status,
+.empty {
+  padding: 10px 14px;
+  color: #9aa0a6;
+}
+
+.detail {
+  padding: 0 14px 18px;
+}
+
+section {
+  margin-top: 14px;
+}
+
+h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9aa0a6;
+}
+
+.request-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 14px;
+}
+
+.method {
+  color: #81c995;
+  font-weight: 700;
+}
+
+.url {
+  word-break: break-all;
+}
+
+.meta {
+  margin-top: 4px;
+  color: #9aa0a6;
+}
+
+#open-network {
+  margin-top: 10px;
+  background: #3c4043;
+  color: #e8eaed;
+}
+
+.path {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: #2b2c2f;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.json {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #171717;
+  overflow: auto;
+  max-height: 480px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+
+.json-key {
+  color: #8ab4f8;
+}
+
+.json-str {
+  color: #f28b82;
+}
+
+.json-num {
+  color: #fdd663;
+}
+
+.json-bool,
+.json-null {
+  color: #c58af9;
+}
+
+.json-hit {
+  background: #f7e08c;
+  color: #1a1a1a !important;
+  outline: 2px solid #e6b800;
+  border-radius: 2px;
+  padding: 0 2px;
+}

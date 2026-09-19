@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>API Source</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand">
+        <strong>ValueTrace</strong>
+        <span>Hover a value. Trace it back to the API.</span>
+      </div>
+      <div class="actions">
+        <button id="start" type="button">Start Inspect</button>
+        <button id="stop" type="button" disabled>Stop Inspect</button>
+      </div>
+    </header>
+    <div id="status" class="status">Waiting for DevTools network…</div>
+    <div id="empty" class="empty">
+      Keep this panel open, refresh the page, then start inspect and hover a number.
+    </div>
+    <div id="detail" class="detail" hidden>
+      <section>
+        <h2>Request</h2>
+        <div class="request-line">
+          <span id="method" class="method"></span>
+          <span id="url" class="url"></span>
+        </div>
+        <div id="meta" class="meta"></div>
+        <button id="open-network" type="button">Open in Network</button>
+      </section>
+      <section>
+        <h2>JSON Path</h2>
+        <div id="path" class="path"></div>
+      </section>
+      <section>
+        <h2>Response</h2>
+        <pre id="json" class="json"></pre>
+      </section>
+    </div>
+    <script src="panel.js"></script>
+  </body>
+</html>

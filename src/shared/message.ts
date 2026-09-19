@@ -1,0 +1,22 @@
+export const MessageType = {
+  NETWORK_RESPONSE_CAPTURED: "NETWORK_RESPONSE_CAPTURED",
+  NETWORK_RAW_CAPTURED: "NETWORK_RAW_CAPTURED",
+  VALUE_LOOKUP_REQUEST: "VALUE_LOOKUP_REQUEST",
+  VALUE_LOOKUP_RESULT: "VALUE_LOOKUP_RESULT",
+  INSPECT_MODE_START: "INSPECT_MODE_START",
+  INSPECT_MODE_STOP: "INSPECT_MODE_STOP",
+  SELECT_API_SOURCE: "SELECT_API_SOURCE",
+  DEVTOOLS_READY: "DEVTOOLS_READY",
+  INDEX_CLEARED: "INDEX_CLEARED",
+  GET_STATUS: "GET_STATUS",
+  STATUS: "STATUS",
+} as const;
+
+export type MessageTypeName = (typeof MessageType)[keyof typeof MessageType];
+
+export interface Envelope<TType extends MessageTypeName, TPayload> {
+  type: TType;
+  payload: TPayload;
+}
+
+export type PortName = "devtools" | "panel";
