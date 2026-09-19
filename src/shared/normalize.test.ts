@@ -52,9 +52,12 @@ describe("flattenJson", () => {
 });
 
 describe("apiNameSuffix", () => {
-  it("keeps the last path segment for Network search", () => {
+  it("keeps the last three path segments for Network search", () => {
+    expect(apiNameSuffix("https://host/api/crowd-management/api/v1/unique/visitor/trend")).toBe(
+      "unique/visitor/trend",
+    );
     expect(apiNameSuffix("https://host/api/v1/queue/history/query/zone/historyTrends")).toBe(
-      "historyTrends",
+      "query/zone/historyTrends",
     );
   });
 });

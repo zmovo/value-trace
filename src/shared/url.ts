@@ -27,16 +27,18 @@ export function urlAffinity(apiUrl: string, pageUrl: string): number {
   }
 }
 
-/** Last path segment, e.g. /queue/zone/historyTrends → historyTrends. */
-export function apiNameSuffix(url: string): string {
+/** Last few path segments so Network search is specific enough. */
+export function apiNameSuffix(url: string, segments = 3): string {
   try {
     const parsed = new URL(url);
-    const parts = parsed.pathname.split("/").filter(Boolean);
-    return parts[parts.length - 1] ?? parsed.pathname;
+    return joinTail(parsed.pathname.split("/").filter(Boolean), segments) || parsed.pathname;
   } catch {
-    const parts = url.split("/").filter(Boolean);
-    return parts[parts.length - 1] ?? url;
+    return joinTail(url.split("/").filter(Boolean), segments) || url;
   }
+}
+
+function joinTail(parts: string[], segments: number): string {
+  return parts.slice(-Math.max(1, segments)).join("/");
 }
 
 /** Same endpoint despite query tokens used for polling / cache busting. */

@@ -6,6 +6,8 @@ export interface OverlayClickDetail {
   match: ValueMatch;
 }
 
+const CARD_WIDTH = 440;
+
 export class Overlay {
   private host: HTMLDivElement | null = null;
   private shadow: ShadowRoot | null = null;
@@ -81,7 +83,7 @@ export class Overlay {
     }
     banner.hidden = !active;
     banner.textContent = active
-      ? "ValueTrace inspect mode — pause on a number to pin the popup, then click a URL."
+      ? "ValueTrace inspect mode — pause on a number to pin the popup."
       : "";
   }
 
@@ -125,20 +127,16 @@ export class Overlay {
     this.card.hidden = false;
     this.card.replaceChildren();
 
+    const header = document.createElement("div");
+    header.className = "header";
     const title = document.createElement("div");
     title.className = "title";
     title.textContent = "API Source";
-    this.card.appendChild(title);
-
     const count = document.createElement("div");
     count.className = "count";
     count.textContent = matches.length === 1 ? "1 match" : `${matches.length} matches`;
-    this.card.appendChild(count);
-
-    const hint = document.createElement("div");
-    hint.className = "hint";
-    hint.textContent = "复制接口名后可粘贴到 Network 搜索。";
-    this.card.appendChild(hint);
+    header.append(title, count);
+    this.card.appendChild(header);
 
     matches.forEach((match, index) => {
       this.card?.appendChild(this.renderRow(match, index));
@@ -187,41 +185,47 @@ export class Overlay {
   }
 
   private renderRow(match: ValueMatch, index: number): HTMLDivElement {
+    const suffix = apiNameSuffix(match.url);
     const row = document.createElement("div");
     row.className = "row";
-    row.setAttribute("data-match-index", String(index));
 
-    const head = document.createElement("div");
-    head.className = "head";
+    const method = document.createElement("span");
+    method.className = "method";
+    method.textContent = match.method;
 
-    const api = document.createElement("button");
-    api.type = "button";
-    api.className = "api";
-    api.setAttribute("data-match-index", String(index));
-    api.textContent = `${match.method} ${match.displayUrl}`;
-    api.title = "Open this request and highlight the matching field";
-
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "copy";
-    copy.setAttribute("data-copy-index", String(index));
-    copy.textContent = "复制";
-    copy.title = `复制 ${apiNameSuffix(match.url)}，到 Network 里搜索`;
-
-    head.append(api, copy);
+    const url = document.createElement("button");
+    url.type = "button";
+    url.className = "url";
+    url.setAttribute("data-match-index", String(index));
+    url.textContent = match.displayUrl;
+    url.title = match.url;
 
     const path = document.createElement("button");
     path.type = "button";
     path.className = "path";
     path.setAttribute("data-match-index", String(index));
     path.textContent = match.jsonPath;
-    path.title = "Highlight this field in the response";
+
+    const footer = document.createElement("div");
+    footer.className = "footer";
 
     const meta = document.createElement("div");
     meta.className = "meta";
     meta.textContent = `${match.rawValue} · ${match.matchType === "exact" ? "Exact" : "Normalized"}`;
 
-    row.append(head, path, meta);
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "copy";
+    copy.setAttribute("data-copy-index", String(index));
+    copy.textContent = "复制";
+    copy.title = `复制 ${suffix}`;
+
+    const copyHint = document.createElement("div");
+    copyHint.className = "copy-hint";
+    copyHint.textContent = suffix;
+
+    footer.append(meta, copy);
+    row.append(method, url, path, copyHint, footer);
     return row;
   }
 
@@ -239,12 +243,11 @@ export class Overlay {
     if (!this.card) {
       return;
     }
-    const width = 320;
-    const height = this.card.getBoundingClientRect().height || 160;
+    const height = this.card.getBoundingClientRect().height || 180;
     let x = clientX + 16;
     let y = clientY + 18;
-    if (x + width > window.innerWidth - 8) {
-      x = Math.max(8, clientX - width - 12);
+    if (x + CARD_WIDTH > window.innerWidth - 8) {
+      x = Math.max(8, clientX - CARD_WIDTH - 12);
     }
     if (y + height > window.innerHeight - 8) {
       y = Math.max(8, clientY - height - 12);
@@ -288,73 +291,65 @@ const styles = `
     z-index: 2147483646;
     background: #1a73e8;
     color: #fff;
-    font: 12px/28px ui-sans-serif, system-ui, sans-serif;
+    font: 12px/28px Arial, Helvetica, sans-serif;
     text-align: center;
-    letter-spacing: 0.01em;
   }
   .card {
     position: fixed;
     z-index: 2147483647;
-    width: 320px;
-    max-height: 280px;
+    width: ${CARD_WIDTH}px;
+    max-width: calc(100vw - 16px);
+    max-height: min(420px, calc(100vh - 16px));
     overflow: auto;
     box-sizing: border-box;
-    padding: 10px 10px 8px;
-    border-radius: 10px;
-    background: #202124;
-    color: #e8eaed;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    padding: 12px;
+    border-radius: 12px;
+    background: #1f1f1f;
+    color: #ececec;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
     border: 1px solid #3c4043;
-    font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+    font: 12px/1.45 Arial, Helvetica, sans-serif;
     pointer-events: auto;
+  }
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
   }
   .title {
     font-weight: 700;
     font-size: 13px;
   }
-  .count,
-  .hint {
+  .count {
     color: #9aa0a6;
-    margin: 2px 0 6px;
-  }
-  .hint {
-    margin-bottom: 8px;
   }
   .row {
-    display: block;
-    width: 100%;
     box-sizing: border-box;
-    margin: 0 0 6px;
-    padding: 8px;
+    margin: 0 0 8px;
+    padding: 10px;
     border: 1px solid #3c4043;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #2b2c2f;
   }
   .row:hover {
     border-color: #8ab4f8;
   }
-  .head {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .copy {
-    flex: none;
-    margin-left: auto;
-    border: 0;
+  .method {
+    display: inline-block;
+    margin-bottom: 6px;
+    padding: 1px 6px;
     border-radius: 4px;
-    padding: 2px 6px;
-    background: #3c4043;
-    color: #e8eaed;
-    font: 11px/1.4 ui-sans-serif, system-ui, sans-serif;
-    cursor: pointer;
+    background: #0d652d;
+    color: #ceead6;
+    font-size: 11px;
+    font-weight: 700;
   }
-  .copy:hover {
-    background: #5f6368;
-  }
-  .api,
+  .url,
   .path {
     display: block;
+    width: 100%;
     padding: 0;
     border: 0;
     background: transparent;
@@ -362,32 +357,52 @@ const styles = `
     cursor: pointer;
     color: inherit;
     font: inherit;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
-  .api {
-    flex: 1;
-    min-width: 0;
-  }
-  .head .api,
-  .api {
+  .url {
     color: #8ab4f8;
-    text-decoration: underline;
-    word-break: break-all;
-  }
-  .api:hover,
-  .path:hover,
-  .pressed {
-    color: #c2d7ff;
-  }
-  .pressed {
-    text-decoration: none;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
   }
   .path {
-    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-    margin-top: 4px;
+    margin-top: 6px;
+    color: #e8eaed;
+    font-family: Consolas, "Courier New", monospace;
+  }
+  .copy-hint {
+    margin-top: 6px;
+    color: #9aa0a6;
+    font-family: Consolas, "Courier New", monospace;
+    overflow-wrap: anywhere;
+  }
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
   }
   .meta {
     color: #9aa0a6;
-    margin-top: 4px;
+  }
+  .copy {
+    flex: none;
+    border: 0;
+    border-radius: 6px;
+    padding: 4px 8px;
+    background: #8ab4f8;
+    color: #202124;
+    font: 11px/1.3 Arial, Helvetica, sans-serif;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .copy:hover,
+  .url:hover,
+  .path:hover,
+  .pressed {
+    filter: brightness(1.08);
   }
 </style>
 `;
