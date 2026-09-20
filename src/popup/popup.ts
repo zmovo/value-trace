@@ -20,7 +20,7 @@ function statusText(status: TabStatus): string {
   if (status.valueCount > 0) {
     return `${status.valueCount} APIs ready · click Start Inspect`;
   }
-  return "Start Inspect, then click a number. Leaving this page turns inspect off.";
+  return "Start Inspect, then click a number.";
 }
 
 async function refresh(): Promise<void> {

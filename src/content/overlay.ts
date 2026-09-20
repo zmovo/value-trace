@@ -105,7 +105,9 @@ export class Overlay {
       return;
     }
     banner.hidden = !active;
-    label.textContent = active ? "Inspect on — click a blue number. × or leave this page to stop." : "";
+    label.textContent = active
+      ? "See which API a number comes from — click a blue number to start"
+      : "";
   }
 
   isVisible(): boolean {
@@ -430,21 +432,23 @@ const styles = `
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding: 0 36px;
+    min-height: 32px;
+    padding: 6px 40px;
     box-sizing: border-box;
     background: #1a73e8;
     color: #fff;
-    font: 12px/28px Arial, Helvetica, sans-serif;
+    font: 12px/18px Arial, Helvetica, sans-serif;
     text-align: center;
     pointer-events: auto;
   }
   .banner-text {
     min-width: 0;
+    max-width: min(720px, calc(100vw - 80px));
   }
   .banner-close {
     position: absolute;
     right: 8px;
-    top: 0;
+    top: 50%;
     width: 28px;
     height: 28px;
     padding: 0;
@@ -452,6 +456,7 @@ const styles = `
     background: transparent;
     color: #fff;
     font: 18px/28px Arial, Helvetica, sans-serif;
+    transform: translateY(-50%);
     cursor: pointer;
   }
   .banner-close:hover {

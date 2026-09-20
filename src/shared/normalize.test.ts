@@ -94,7 +94,7 @@ describe("acceptance: UI 66,860 → /mock/dashboard", () => {
       tabId: 1,
       meta: {
         requestId: "dash",
-        url: "http://localhost:3456/mock/dashboard",
+        url: "https://example.test/mock/dashboard",
         method: "GET",
         status: 200,
         durationMs: 80,
@@ -107,7 +107,7 @@ describe("acceptance: UI 66,860 → /mock/dashboard", () => {
     });
 
     const hovered = extractValues("66,860")[0];
-    const matches = index.lookup(hovered.lookupKeys, hovered.primaryKey, "http://localhost:3456/");
+    const matches = index.lookup(hovered.lookupKeys, hovered.primaryKey, "https://example.test/");
     expect(matches[0]?.displayUrl).toBe("/mock/dashboard");
     expect(matches[0]?.jsonPath).toBe("$.data.entryCount");
     expect(matches[0]?.rawValue).toBe(66860);
@@ -209,7 +209,7 @@ describe("ValueIndex", () => {
     const index = new ValueIndex();
     index.addCaptured(capture("r1", "/mock/dashboard", "$.data.entryCount", 66860, 100));
     index.addCaptured(capture("r2", "/mock/report", "$.data.total", 66860, 50));
-    const matches = index.lookup(["66860"], "66860", "http://localhost:3456/");
+    const matches = index.lookup(["66860"], "66860", "https://example.test/");
     expect(matches).toHaveLength(2);
     expect(matches[0].url).toContain("/mock/dashboard");
   });
@@ -219,7 +219,7 @@ describe("ValueIndex", () => {
     index.addCaptured(capture("r1", "/mock/dashboard?t=1", "$.data[0].entryCount", 66860, 10));
     index.addCaptured(capture("r2", "/mock/dashboard?t=2", "$.data[3].entryCount", 66860, 20));
     index.addCaptured(capture("r3", "/mock/dashboard?t=3", "$.data[3].entryCount", 66860, 30));
-    const matches = index.lookup(["66860"], "66860", "http://localhost:3456/");
+    const matches = index.lookup(["66860"], "66860", "https://example.test/");
     expect(matches).toHaveLength(1);
     expect(matches[0].requestId).toBe("r3");
   });
@@ -236,7 +236,7 @@ function capture(
     tabId: 1,
     meta: {
       requestId,
-      url: `http://localhost:3456${url}`,
+      url: `https://example.test${url}`,
       method: "GET",
       status: 200,
       durationMs: 12,

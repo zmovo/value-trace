@@ -13,7 +13,9 @@ Repo: https://github.com/zmovo/value-trace
 3. Click the ValueTrace icon → **Start Inspect**
 4. Click a blue-boxed number
 
-Stop inspect from the blue banner **×**, or **Esc** to close the popup. Only one tab can inspect at a time. A full page leave or refresh turns it off; in-page clicks do not. DevTools → API Source is optional (full JSON).
+**×** on the banner stops inspect. **Esc** closes the API card. Only one tab can inspect at a time. Refreshing this tab, or opening another site in it, stops inspect when the new page starts. Switching tabs or clicking around on the same page does not.
+
+DevTools → API Source is optional (full JSON).
 
 ## Develop
 
@@ -21,7 +23,6 @@ Stop inspect from the blue banner **×**, or **Esc** to close the popup. Only on
 npm install
 npm test
 npm run build
-npm run test-page
 ```
 
-`dist/` is the unpacked extension. The test page is `http://localhost:3456`.
+`dist/` is the unpacked extension.

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ValueTrace",
-  "version": "0.1.22",
-  "description": "Start Inspect, click a number, see its API.",
+  "version": "0.1.24",
+  "description": "See which API a number comes from. Click a number to start.",
   "permissions": ["scripting", "activeTab", "clipboardWrite", "webNavigation"],
   "host_permissions": ["<all_urls>"],
   "background": {
