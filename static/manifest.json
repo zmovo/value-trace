@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ValueTrace",
-  "version": "0.1.13",
-  "description": "Hover a value. Trace it back to the API.",
+  "version": "0.1.20",
+  "description": "Click a value. Trace it back to the API.",
   "permissions": ["scripting", "activeTab", "clipboardWrite"],
   "host_permissions": ["<all_urls>"],
   "background": {

@@ -22,12 +22,22 @@ function unique(values: string[]): string[] {
 /**
  * Extra keys so 0.632 in JSON can be found from a "63.2%" label.
  * Integers are left alone to avoid matching count=1 with 100%.
+ * 100% → 1 and 0% → 0 are also skipped — those aliases collide with flags/counts.
  */
 function percentAliases(n: number): number[] {
   if (n > 0 && n < 1) {
     return [n, n * 100];
   }
   return [n];
+}
+
+function percentLookupKeys(n: number): string[] {
+  const primary = canonicalNumber(n);
+  const ratio = n / 100;
+  if (ratio > 0 && ratio < 1) {
+    return unique([primary, canonicalNumber(ratio)]);
+  }
+  return [primary];
 }
 
 function parseGroupedNumber(raw: string): number | null {
@@ -45,6 +55,7 @@ function parseGroupedNumber(raw: string): number | null {
  *   66860        → ["66860"]
  *   "66,860"     → ["66860"]
  *   "63.2%"      → ["63.2", "0.632"]
+ *   "100%"       → ["100"]
  *   0.632        → ["0.632", "63.2"]
  *   "$12,350.50" → ["12350.5"]
  *   "1.2K"       → ["1200"]
@@ -83,7 +94,7 @@ export function parseDisplayToken(text: string): ExtractedValue | null {
     return {
       rawText: trimmed,
       primaryKey: canonicalNumber(n),
-      lookupKeys: unique([canonicalNumber(n), canonicalNumber(n / 100)]),
+      lookupKeys: percentLookupKeys(n),
     };
   }
 

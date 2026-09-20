@@ -119,7 +119,7 @@ function renderStatus(status: TabStatus): void {
       "No API values yet. Keep this panel open, then click Reload APIs (or refresh the page).";
   } else {
     emptyEl.textContent =
-      "Start Inspect, hover a number on the page, then click a match to open it here.";
+      "Start Inspect, click a number on the page, then click a match to open it here.";
   }
 }
 

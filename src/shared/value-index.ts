@@ -99,7 +99,9 @@ export class ValueIndex {
     }
 
     const collapsed = collapseMatches(
-      [...merged.values()].filter((match) => !isMetadataPath(match.jsonPath)),
+      [...merged.values()].filter(
+        (match) => !isMetadataPath(match.jsonPath) && !isConfusingAlias(match, primaryKey),
+      ),
       pageUrl,
     );
     const ranked = rankByHints(collapseByLeaf(collapsed, pageUrl), hints, pageUrl);
@@ -150,11 +152,11 @@ export class ValueIndex {
  * Keep the latest hit per API + field, and treat array indexes as the same field.
  */
 function rankByHints(matches: ValueMatch[], hints: UiHint | undefined, pageUrl: string): ValueMatch[] {
-  if (!hints?.tokens.length) {
-    return matches;
-  }
-  const ranked = scoreMatches(matches, hints);
+  const ranked = hints?.tokens.length ? scoreMatches(matches, hints) : matches;
   ranked.sort((a, b) => {
+    if (a.matchType !== b.matchType) {
+      return a.matchType === "exact" ? -1 : 1;
+    }
     const delta = (b.contextScore ?? 0) - (a.contextScore ?? 0);
     if (delta !== 0) {
       return delta;
@@ -162,6 +164,14 @@ function rankByHints(matches: ValueMatch[], hints: UiHint | undefined, pageUrl: 
     return compareMatches(a, b, pageUrl);
   });
   return pickLikelyMatches(ranked);
+}
+
+/** 100% must not surface a "1 · Normalized" flag/ratio above the real percent. */
+function isConfusingAlias(match: ValueMatch, primaryKey: string): boolean {
+  if (match.matchType !== "normalized" || AMBIGUOUS_KEYS.has(primaryKey)) {
+    return false;
+  }
+  return AMBIGUOUS_KEYS.has(primaryKeyOf(match.rawValue));
 }
 
 function capMatches(matches: ValueMatch[], primaryKey: string): ValueMatch[] {

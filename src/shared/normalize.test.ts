@@ -19,6 +19,13 @@ describe("normalizeValue", () => {
     expect(normalizeValue(63.2)).toContain("63.2");
   });
 
+  it("does not treat 100% as every JSON 1", () => {
+    expect(normalizeValue("100%")).toEqual(["100"]);
+    expect(normalizeValue("100.00%")).toEqual(["100"]);
+    expect(normalizeValue("0%")).toEqual(["0"]);
+    expect(normalizeValue("100%")).not.toContain("1");
+  });
+
   it("does not treat 0.9 minutes as 90 percent", () => {
     expect(normalizeValue("0.9")).toEqual(["0.9"]);
     expect(normalizeValue("0.9")).not.toContain("90");
@@ -40,6 +47,11 @@ describe("extractValues", () => {
     const values = extractValues("Entry Guests\n66,860");
     expect(values.map((v) => v.primaryKey)).toContain("66860");
     expect(values.some((v) => v.rawText === "66")).toBe(false);
+  });
+
+  it("reads a split percent like 13 % as one token", () => {
+    expect(extractValues(" 13 %").map((value) => value.primaryKey)).toEqual(["13"]);
+    expect(extractValues("Absent staff 26 Present Staff 4 Presence Rate 13 %")).toHaveLength(3);
   });
 });
 
@@ -174,6 +186,23 @@ describe("ValueIndex", () => {
     const matches = index.lookup(["0"], "0", "https://host/screen/queueInsight", hints);
     expect(matches.length).toBeLessThanOrEqual(5);
     expect(matches[0].jsonPath).toContain("fastPassTime");
+  });
+
+  it("keeps 100% exact matches above a 1.0 ratio field", () => {
+    const index = new ValueIndex();
+    index.addCaptured(
+      capture("r1", "/api/v1/queue/realtime/query/zone/overview", "$.data.zoneRealtime.queuePercentage.value", 100, 10),
+    );
+    index.addCaptured(
+      capture("r2", "/api/v1/queue/realtime/query/zone/overview", "$.data.zoneTrends.QUEUEING_GUEST_RATIO.data.DATA[0]", 1, 20),
+    );
+    const hovered = extractValues("100.00%")[0];
+    const hints = { labels: ["Queue Guests"], tokens: tokenizeHints(["Queue Guests"]) };
+    const matches = index.lookup(hovered.lookupKeys, hovered.primaryKey, "https://host/screen/queueInsight", hints);
+    expect(matches[0]?.rawValue).toBe(100);
+    expect(matches[0]?.matchType).toBe("exact");
+    expect(matches[0]?.jsonPath).toContain("queuePercentage");
+    expect(matches.some((item) => primaryKeyOf(item.rawValue) === "1")).toBe(false);
   });
 
   it("returns multiple candidates for the same number", () => {

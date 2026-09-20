@@ -2,7 +2,7 @@
   "name": "value-trace",
   "version": "0.1.0",
   "private": true,
-  "description": "Hover a value. Trace it back to the API.",
+  "description": "Click a value. Trace it back to the API.",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",

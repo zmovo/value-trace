@@ -1,6 +1,6 @@
 # ValueTrace
 
-Hover a value. Trace it back to the API.
+Click a value. Trace it back to the API.
 
 Local-only Chrome DevTools extension (Manifest V3). Network responses never leave the browser.
 
@@ -26,4 +26,4 @@ npm run test-page
 5. Open `http://localhost:3456`
 6. Open DevTools and select the **API Source** tab
 7. Refresh the page so the collector can index `/mock/dashboard`
-8. Click **Start Inspect** and hover `66,860`
+8. Click **Start Inspect** and click `66,860`

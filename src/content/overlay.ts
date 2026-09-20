@@ -25,6 +25,8 @@ export class Overlay {
   private locked = false;
   private currentMatches: ValueMatch[] = [];
   private avoid: OverlayAvoidRect | null = null;
+  private cardRect: OverlayAvoidRect | null = null;
+  private hit: HTMLDivElement | null = null;
 
   mount(onSelect: (detail: OverlayClickDetail) => void): void {
     this.onSelect = onSelect;
@@ -38,11 +40,12 @@ export class Overlay {
     host.style.cssText =
       "all:initial;position:fixed;z-index:2147483646;top:0;left:0;width:0;height:0;pointer-events:none;";
     const shadow = host.attachShadow({ mode: "closed" });
-    shadow.innerHTML = `${styles}<div class="banner"></div><div class="card" hidden></div>`;
+    shadow.innerHTML = `${styles}<div class="banner"></div><div class="hit" hidden></div><div class="card" hidden></div>`;
 
     this.host = host;
     this.shadow = shadow;
     this.card = shadow.querySelector(".card");
+    this.hit = shadow.querySelector(".hit");
     this.card?.addEventListener("pointerenter", () => {
       this.pointerInside = true;
       this.locked = true;
@@ -91,7 +94,7 @@ export class Overlay {
     }
     banner.hidden = !active;
     banner.textContent = active
-      ? "ValueTrace inspect mode — hover a number, then move onto the popup to copy."
+      ? "ValueTrace inspect mode — click the blue box on a number. Clicks outside the number still work."
       : "";
   }
 
@@ -116,12 +119,27 @@ export class Overlay {
     );
   }
 
+  highlight(rect: OverlayAvoidRect | null): void {
+    if (!this.hit) {
+      return;
+    }
+    if (!rect) {
+      this.hit.hidden = true;
+      return;
+    }
+    const pad = 3;
+    this.hit.hidden = false;
+    this.hit.style.left = `${Math.round(rect.left - pad)}px`;
+    this.hit.style.top = `${Math.round(rect.top - pad)}px`;
+    this.hit.style.width = `${Math.round(rect.right - rect.left + pad * 2)}px`;
+    this.hit.style.height = `${Math.round(rect.bottom - rect.top + pad * 2)}px`;
+  }
+
   getCardRect(): OverlayAvoidRect | null {
     if (!this.card || this.card.hidden) {
       return null;
     }
-    const rect = this.card.getBoundingClientRect();
-    return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+    return this.cardRect;
   }
 
   show(
@@ -196,6 +214,7 @@ export class Overlay {
     this.locked = false;
     this.currentMatches = [];
     this.avoid = null;
+    this.cardRect = null;
   }
 
   contains(target: EventTarget | null): boolean {
@@ -203,11 +222,13 @@ export class Overlay {
   }
 
   destroy(): void {
+    this.highlight(null);
     this.hideCard();
     this.host?.remove();
     this.host = null;
     this.shadow = null;
     this.card = null;
+    this.hit = null;
     this.onSelect = null;
   }
 
@@ -279,10 +300,16 @@ export class Overlay {
     if (!this.card) {
       return;
     }
-    const height = this.card.getBoundingClientRect().height || 180;
+    const height = Math.min(this.card.offsetHeight || 180, 300);
     const chosen = pickPlacement(clientX, clientY, CARD_WIDTH, height, this.avoid);
     this.card.style.left = `${Math.round(chosen.x)}px`;
     this.card.style.top = `${Math.round(chosen.y)}px`;
+    this.cardRect = {
+      left: chosen.x,
+      top: chosen.y,
+      right: chosen.x + CARD_WIDTH,
+      bottom: chosen.y + height,
+    };
   }
 }
 
@@ -298,28 +325,32 @@ function pickPlacement(
   const pad = 8;
   const gap = 12;
   const candidates: { x: number; y: number }[] = [];
+  const shortNumber = Boolean(avoid && avoid.bottom - avoid.top <= 56);
   if (avoid) {
-    candidates.push(
-      { x: avoid.right + gap, y: avoid.top },
-      { x: avoid.left - width - gap, y: avoid.top },
-      { x: avoid.left, y: avoid.bottom + gap },
-      { x: avoid.left, y: avoid.top - height - gap },
-    );
+    const below = { x: avoid.left, y: avoid.bottom + gap };
+    const right = { x: avoid.right + gap, y: avoid.top };
+    const left = { x: avoid.left - width - gap, y: avoid.top };
+    const above = { x: avoid.left, y: avoid.top - height - gap };
+    candidates.push(shortNumber ? below : right, shortNumber ? right : below, left, above);
   }
   candidates.push({ x: clientX + 18, y: clientY + 20 }, { x: clientX - width - 12, y: clientY + 20 });
 
   let best = candidates[0];
   let bestScore = Number.NEGATIVE_INFINITY;
   for (const candidate of candidates) {
-    const x = clamp(candidate.x, pad, vw - width - pad);
-    const y = clamp(candidate.y, pad, vh - height - pad);
+    const x = clamp(candidate.x, pad, Math.max(pad, vw - width - pad));
+    const y = clamp(candidate.y, pad, Math.max(pad, vh - height - pad));
     const fitsX = candidate.x >= pad && candidate.x + width <= vw - pad;
     const fitsY = candidate.y >= pad && candidate.y + height <= vh - pad;
     let score = (fitsX ? 40 : 0) + (fitsY ? 40 : 0);
     if (avoid && !overlaps(x, y, width, height, avoid)) {
       score += 80;
     }
-    score += Math.min(vw - (x + width), x) + Math.min(vh - (y + height), y) * 0.25;
+    if (avoid) {
+      const dx = x + width / 2 - (avoid.left + avoid.right) / 2;
+      const dy = y + height / 2 - (avoid.top + avoid.bottom) / 2;
+      score -= Math.hypot(dx, dy) * 0.2;
+    }
     if (score > bestScore) {
       bestScore = score;
       best = { x, y };
@@ -364,6 +395,16 @@ const styles = `
   :host {
     all: initial;
     pointer-events: none;
+  }
+  .hit {
+    position: fixed;
+    pointer-events: none;
+    z-index: 2147483645;
+    box-sizing: border-box;
+    border: 2px solid #8ab4f8;
+    border-radius: 6px;
+    background: rgba(26, 115, 232, 0.2);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
   }
   .banner {
     position: fixed;
