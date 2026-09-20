@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ValueTrace demo</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #0f172a;
+        color: #e2e8f0;
+        font: 16px/1.5 Arial, Helvetica, sans-serif;
+      }
+      main {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 48px 24px;
+      }
+      .eyebrow {
+        margin: 0 0 8px;
+        color: #8ab4f8;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 12px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 36px;
+      }
+      .hint {
+        color: #94a3b8;
+        max-width: 640px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin: 32px 0;
+      }
+      .card {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 16px;
+        padding: 20px;
+      }
+      .label {
+        color: #94a3b8;
+        font-size: 14px;
+      }
+      .value {
+        margin-top: 8px;
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+      }
+      .state {
+        color: #64748b;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">ValueTrace public demo</p>
+      <h1>Venue Dashboard</h1>
+      <p class="hint">
+        Install ValueTrace, click the toolbar icon, press <strong>Start Inspect</strong>, then click
+        <strong>66,860</strong>. The overlay should show <code>/dashboard.json</code> and
+        <code>$.data.entryCount</code>.
+      </p>
+      <section class="grid">
+        <article class="card">
+          <div class="label">Entry Guests</div>
+          <div class="value" id="entry">—</div>
+        </article>
+        <article class="card">
+          <div class="label">Exit Guests</div>
+          <div class="value" id="exit">—</div>
+        </article>
+        <article class="card">
+          <div class="label">Occupancy</div>
+          <div class="value" id="occupancy">—</div>
+        </article>
+        <article class="card">
+          <div class="label">Queue</div>
+          <div class="value" id="queue">—</div>
+        </article>
+      </section>
+      <p id="load-state" class="state">Loading dashboard.json…</p>
+    </main>
+    <script>
+      const state = document.getElementById("load-state");
+      function commas(value) {
+        return Number(value).toLocaleString("en-US");
+      }
+      Promise.all([fetch("./report.json").then((r) => r.json()), fetch("./dashboard.json").then((r) => r.json())])
+        .then(([_, dashboard]) => {
+          document.getElementById("entry").textContent = commas(dashboard.data.entryCount);
+          document.getElementById("exit").textContent = commas(dashboard.data.exitCount);
+          document.getElementById("occupancy").textContent = `${(dashboard.data.occupancyRate * 100).toFixed(1)}%`;
+          document.getElementById("queue").textContent = `${dashboard.data.queueMinutes} min`;
+          state.textContent = "Loaded dashboard.json and report.json.";
+        })
+        .catch((error) => {
+          state.textContent = error instanceof Error ? error.message : "Failed to load demo APIs";
+        });
+    </script>
+  </body>
+</html>

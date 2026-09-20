@@ -3,3 +3,4 @@ dist/
 .DS_Store
 *.log
 .tmp-video-frames/
+store/value-trace.zip

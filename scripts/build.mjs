@@ -28,7 +28,7 @@ for (const [name, entry] of entries) {
     build: {
       emptyOutDir: false,
       outDir: "dist",
-      sourcemap: true,
+      sourcemap: process.env.STORE !== "1",
       minify: false,
       lib: {
         entry: resolve(root, entry),

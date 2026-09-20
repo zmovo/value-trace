@@ -26,3 +26,16 @@ npm run build
 ```
 
 `dist/` is the unpacked extension.
+
+## Chrome Web Store
+
+Paste-ready listing, permission justifications, and reviewer notes: `store/LISTING.md`.
+
+```bash
+npm run pack
+```
+
+Upload `store/value-trace.zip`. After this repo’s GitHub Pages is enabled on `docs/`:
+
+- Demo: https://zmovo.github.io/value-trace/
+- Privacy: https://zmovo.github.io/value-trace/privacy.html

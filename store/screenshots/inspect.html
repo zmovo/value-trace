@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ValueTrace screenshot — inspect</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1280px;
+        height: 800px;
+        overflow: hidden;
+        background: #0f172a;
+        color: #e2e8f0;
+        font: 16px/1.5 Arial, Helvetica, sans-serif;
+      }
+      .banner {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        min-height: 32px;
+        padding: 6px 40px;
+        box-sizing: border-box;
+        background: #1a73e8;
+        color: #fff;
+        font: 12px/18px Arial, Helvetica, sans-serif;
+        text-align: center;
+      }
+      .banner-close {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        width: 28px;
+        height: 28px;
+        transform: translateY(-50%);
+        font: 18px/28px Arial, Helvetica, sans-serif;
+      }
+      main {
+        padding: 72px 64px 0;
+      }
+      .eyebrow {
+        margin: 0 0 8px;
+        color: #8ab4f8;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 12px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 36px;
+      }
+      .hint {
+        color: #94a3b8;
+        max-width: 640px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin: 32px 0 0;
+        width: 920px;
+      }
+      .dash {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 16px;
+        padding: 20px;
+      }
+      .label {
+        color: #94a3b8;
+        font-size: 14px;
+      }
+      .value {
+        margin-top: 8px;
+        font-size: 32px;
+        font-weight: 700;
+      }
+      .hit {
+        display: inline-block;
+        border: 2px solid #8ab4f8;
+        border-radius: 6px;
+        background: rgba(26, 115, 232, 0.2);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+        padding: 0 4px;
+      }
+      .card {
+        position: absolute;
+        left: 64px;
+        top: 360px;
+        width: 400px;
+        box-sizing: border-box;
+        padding: 10px;
+        border-radius: 12px;
+        background: #1f1f1f;
+        color: #ececec;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+        border: 1px solid #3c4043;
+        font: 12px/1.45 Arial, Helvetica, sans-serif;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .title {
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .count,
+      .via,
+      .meta,
+      .copy-hint {
+        color: #9aa0a6;
+      }
+      .via {
+        margin: -2px 0 10px;
+      }
+      .row {
+        padding: 8px;
+        border: 1px solid #8ab4f8;
+        border-radius: 10px;
+        background: #2b2c2f;
+      }
+      .method,
+      .likely {
+        display: inline-block;
+        margin: 0 6px 6px 0;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .method {
+        background: #0d652d;
+        color: #ceead6;
+      }
+      .likely {
+        background: #174ea6;
+        color: #d2e3fc;
+      }
+      .url {
+        color: #8ab4f8;
+        font-family: Consolas, "Courier New", monospace;
+      }
+      .path,
+      .copy-hint {
+        margin-top: 6px;
+        font-family: Consolas, "Courier New", monospace;
+      }
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 8px;
+      }
+      .copy {
+        border: 0;
+        border-radius: 6px;
+        padding: 4px 8px;
+        background: #8ab4f8;
+        color: #202124;
+        font: 700 11px Arial, Helvetica, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="banner">
+      See which API a number comes from — click a blue number to start
+      <span class="banner-close">×</span>
+    </div>
+    <main>
+      <p class="eyebrow">ValueTrace public demo</p>
+      <h1>Venue Dashboard</h1>
+      <p class="hint">Click a blue-boxed number to see its API URL and JSON Path.</p>
+      <section class="grid">
+        <article class="dash">
+          <div class="label">Entry Guests</div>
+          <div class="value"><span class="hit">66,860</span></div>
+        </article>
+        <article class="dash">
+          <div class="label">Exit Guests</div>
+          <div class="value">52,113</div>
+        </article>
+        <article class="dash">
+          <div class="label">Occupancy</div>
+          <div class="value">63.2%</div>
+        </article>
+        <article class="dash">
+          <div class="label">Queue</div>
+          <div class="value">27 min</div>
+        </article>
+      </section>
+    </main>
+    <div class="card">
+      <div class="header">
+        <div class="title">API</div>
+        <div class="count">1 match</div>
+      </div>
+      <div class="via">Entry Guests</div>
+      <div class="row">
+        <span class="method">GET</span><span class="likely">likely</span>
+        <div class="url">/dashboard.json</div>
+        <div class="path">$.data.entryCount</div>
+        <div class="copy-hint">dashboard.json</div>
+        <div class="footer">
+          <div class="meta">66860 · Exact</div>
+          <button class="copy" type="button">Copy</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

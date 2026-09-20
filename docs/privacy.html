@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ValueTrace Privacy Policy</title>
+    <style>
+      body {
+        margin: 0 auto;
+        max-width: 720px;
+        padding: 48px 20px;
+        color: #202124;
+        font: 16px/1.55 Arial, Helvetica, sans-serif;
+      }
+      h1 {
+        font-size: 28px;
+      }
+      h2 {
+        margin-top: 28px;
+        font-size: 18px;
+      }
+      p,
+      li {
+        color: #3c4043;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ValueTrace Privacy Policy</h1>
+    <p>Last updated: 20 September 2026</p>
+    <p>
+      ValueTrace is a Chrome extension that helps a developer see which local API response field
+      produced a number on the current web page. It is local-only: network responses stay in the
+      browser.
+    </p>
+    <h2>What the extension reads</h2>
+    <p>
+      After you click <strong>Start Inspect</strong>, ValueTrace reads visible numbers on the
+      current tab and matches them to JSON fields from that tab’s XHR and fetch responses. Those
+      response bodies are kept in memory on your machine so a click can show the API URL and JSON
+      Path.
+    </p>
+    <h2>What we do not collect</h2>
+    <ul>
+      <li>No accounts, cookies, or identifiers are sent to ValueTrace.</li>
+      <li>No page content or network bodies are uploaded, stored on a server, or sold.</li>
+      <li>The extension does not include advertising, analytics, or remote code.</li>
+    </ul>
+    <h2>Clipboard</h2>
+    <p>
+      If you click <strong>Copy</strong> on a match, ValueTrace writes the API path suffix to your
+      clipboard. Nothing else is written to the clipboard.
+    </p>
+    <h2>When inspect stops</h2>
+    <p>
+      Inspect stays on the current tab until you click the banner ×, start inspect on another tab,
+      or this tab begins a new full page (refresh or a different site). Switching Chrome tabs does
+      not stop inspect.
+    </p>
+    <h2>Contact</h2>
+    <p>
+      Questions: open an issue on
+      <a href="https://github.com/zmovo/value-trace">github.com/zmovo/value-trace</a>.
+    </p>
+  </body>
+</html>
