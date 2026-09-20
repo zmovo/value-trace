@@ -9,16 +9,16 @@
     <header class="toolbar">
       <div class="brand">
         <strong>ValueTrace</strong>
-        <span>Click a value. Trace it back to the API.</span>
+        <span>Optional JSON view. Inspect starts from the toolbar icon.</span>
       </div>
       <div class="actions">
         <button id="start" type="button">Start Inspect</button>
         <button id="stop" type="button" disabled>Stop Inspect</button>
       </div>
     </header>
-    <div id="status" class="status">Waiting for DevTools network…</div>
+    <div id="status" class="status">Waiting for this page’s APIs…</div>
     <div id="empty" class="empty">
-      Keep this panel open, refresh the page, then start inspect and click a number.
+      Click a match on the page to open the full JSON here.
     </div>
     <div id="detail" class="detail" hidden>
       <section>

@@ -11,6 +11,18 @@ async function activeTabId(): Promise<number | null> {
   return tab?.id ?? null;
 }
 
+function statusText(status: TabStatus): string {
+  if (status.inspectActive) {
+    return status.valueCount > 0
+      ? `Inspect ON · ${status.valueCount} APIs ready`
+      : "Inspect ON · browse the page, then click a number";
+  }
+  if (status.valueCount > 0) {
+    return `${status.valueCount} APIs ready · click Start Inspect`;
+  }
+  return "Start Inspect, then click a number. Leaving this page turns inspect off.";
+}
+
 async function refresh(): Promise<void> {
   if (!isExtensionContextValid()) {
     statusEl.textContent = "Extension reloaded. Close this popup and try again.";
@@ -25,13 +37,13 @@ async function refresh(): Promise<void> {
     { type: MessageType.GET_STATUS, payload: { tabId } },
     (response: { payload?: TabStatus }) => {
       if (chrome.runtime.lastError || !response?.payload) {
-        statusEl.textContent = "Open DevTools to start capturing APIs.";
+        statusEl.textContent = "Click Start Inspect, then click a number.";
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
         return;
       }
       const status = response.payload;
-      statusEl.textContent = status.hasDevTools
-        ? `${status.valueCount} values indexed · ${status.inspectActive ? "Inspect ON" : "Inspect OFF"}`
-        : "Open DevTools → API Source, then refresh the page.";
+      statusEl.textContent = statusText(status);
       startBtn.disabled = status.inspectActive;
       stopBtn.disabled = !status.inspectActive;
     },

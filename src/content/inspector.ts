@@ -33,7 +33,10 @@ export class Inspector {
     this.tabId = tabId ?? this.tabId;
     this.active = true;
     this.resetPin();
-    this.overlay.mount((detail) => this.select(detail.match));
+    this.overlay.mount(
+      (detail) => this.select(detail.match),
+      () => this.requestStop(),
+    );
     this.overlay.setInspecting(true);
     try {
       this.keepAlive = isExtensionContextValid() ? chrome.runtime.connect({ name: "inspect" }) : null;
@@ -312,6 +315,21 @@ export class Inspector {
       }
     });
     return this.inflight;
+  }
+
+  private requestStop(): void {
+    if (!isExtensionContextValid()) {
+      this.stop();
+      return;
+    }
+    try {
+      chrome.runtime.sendMessage({
+        type: MessageType.INSPECT_MODE_STOP,
+        payload: { tabId: this.tabId },
+      });
+    } catch {
+      this.stop();
+    }
   }
 
   private select(match: ValueMatch): void {

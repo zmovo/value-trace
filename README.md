@@ -1,10 +1,19 @@
 # ValueTrace
 
-Click a value. Trace it back to the API.
+Click a number. See its API.
 
-Local-only Chrome DevTools extension (Manifest V3). Network responses never leave the browser.
+Local-only Chrome extension (Manifest V3). Network responses never leave the browser.
 
 Repo: https://github.com/zmovo/value-trace
+
+## Use
+
+1. Load unpacked `dist/` in `chrome://extensions`
+2. Open the page
+3. Click the ValueTrace icon → **Start Inspect**
+4. Click a blue-boxed number
+
+Stop inspect from the blue banner **×**, or **Esc** to close the popup. Only one tab can inspect at a time. A full page leave or refresh turns it off; in-page clicks do not. DevTools → API Source is optional (full JSON).
 
 ## Develop
 
@@ -16,14 +25,3 @@ npm run test-page
 ```
 
 `dist/` is the unpacked extension. The test page is `http://localhost:3456`.
-
-## Load in Chrome
-
-1. Open `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked** and select this repo's `dist/` folder
-4. Start `npm run test-page`
-5. Open `http://localhost:3456`
-6. Open DevTools and select the **API Source** tab
-7. Refresh the page so the collector can index `/mock/dashboard`
-8. Click **Start Inspect** and click `66,860`

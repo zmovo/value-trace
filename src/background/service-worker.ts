@@ -24,6 +24,7 @@ const devtoolsPorts = new Map<number, Set<chrome.runtime.Port>>();
 const lastSelections = new Map<number, PanelSelection>();
 const recentCaptures = new Map<string, number>();
 const lastCaptureUrls = new Map<number, string>();
+let inspectingTabId: number | null = null;
 
 function stateFor(tabId: number): TabState {
   const existing = tabs.get(tabId);
@@ -120,8 +121,16 @@ async function injectContent(tabId: number): Promise<void> {
 }
 
 async function setInspect(tabId: number, active: boolean): Promise<void> {
+  if (active && inspectingTabId != null && inspectingTabId !== tabId) {
+    await applyInspect(inspectingTabId, false);
+  }
+  await applyInspect(tabId, active);
+}
+
+async function applyInspect(tabId: number, active: boolean): Promise<void> {
   const state = stateFor(tabId);
   state.inspectActive = active;
+  inspectingTabId = active ? tabId : inspectingTabId === tabId ? null : inspectingTabId;
   const type = active ? MessageType.INSPECT_MODE_START : MessageType.INSPECT_MODE_STOP;
   let ok = await sendToTab(tabId, { type, payload: { tabId } });
   if (!ok && active) {
@@ -134,6 +143,13 @@ async function setInspect(tabId: number, active: boolean): Promise<void> {
   }
   log(active ? "Inspect mode started" : "Inspect mode stopped", tabId);
   broadcastStatus(tabId);
+}
+
+function stopInspectOnFullNavigation(tabId: number): void {
+  if (!tabs.get(tabId)?.inspectActive) {
+    return;
+  }
+  void setInspect(tabId, false);
 }
 
 function captureKey(payload: CapturedResponse): string {
@@ -381,3 +397,21 @@ chrome.runtime.onMessage.addListener(
     return false;
   },
 );
+
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0) {
+    return;
+  }
+  stopInspectOnFullNavigation(details.tabId);
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (inspectingTabId === tabId) {
+    inspectingTabId = null;
+  }
+  tabs.delete(tabId);
+  lastSelections.delete(tabId);
+  lastCaptureUrls.delete(tabId);
+  panelPorts.delete(tabId);
+  devtoolsPorts.delete(tabId);
+});

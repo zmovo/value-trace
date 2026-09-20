@@ -20,6 +20,7 @@ export class Overlay {
   private shadow: ShadowRoot | null = null;
   private card: HTMLDivElement | null = null;
   private onSelect: ((detail: OverlayClickDetail) => void) | null = null;
+  private onStopInspect: (() => void) | null = null;
   private pinnedKey = "";
   private pointerInside = false;
   private locked = false;
@@ -28,8 +29,9 @@ export class Overlay {
   private cardRect: OverlayAvoidRect | null = null;
   private hit: HTMLDivElement | null = null;
 
-  mount(onSelect: (detail: OverlayClickDetail) => void): void {
+  mount(onSelect: (detail: OverlayClickDetail) => void, onStopInspect?: () => void): void {
     this.onSelect = onSelect;
+    this.onStopInspect = onStopInspect ?? null;
     if (this.host) {
       return;
     }
@@ -40,12 +42,21 @@ export class Overlay {
     host.style.cssText =
       "all:initial;position:fixed;z-index:2147483646;top:0;left:0;width:0;height:0;pointer-events:none;";
     const shadow = host.attachShadow({ mode: "closed" });
-    shadow.innerHTML = `${styles}<div class="banner"></div><div class="hit" hidden></div><div class="card" hidden></div>`;
+    shadow.innerHTML = `${styles}<div class="banner" hidden><span class="banner-text"></span><button type="button" class="banner-close" aria-label="Stop inspect">×</button></div><div class="hit" hidden></div><div class="card" hidden></div>`;
 
     this.host = host;
     this.shadow = shadow;
     this.card = shadow.querySelector(".card");
     this.hit = shadow.querySelector(".hit");
+    this.shadow.querySelector(".banner-close")?.addEventListener(
+      "pointerdown",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.onStopInspect?.();
+      },
+      true,
+    );
     this.card?.addEventListener("pointerenter", () => {
       this.pointerInside = true;
       this.locked = true;
@@ -89,13 +100,12 @@ export class Overlay {
 
   setInspecting(active: boolean): void {
     const banner = this.shadow?.querySelector(".banner");
-    if (!(banner instanceof HTMLElement)) {
+    const label = this.shadow?.querySelector(".banner-text");
+    if (!(banner instanceof HTMLElement) || !(label instanceof HTMLElement)) {
       return;
     }
     banner.hidden = !active;
-    banner.textContent = active
-      ? "ValueTrace inspect mode — click the blue box on a number. Clicks outside the number still work."
-      : "";
+    label.textContent = active ? "Inspect on — click a blue number. × or leave this page to stop." : "";
   }
 
   isVisible(): boolean {
@@ -163,13 +173,14 @@ export class Overlay {
     this.avoid = avoid ?? null;
     this.currentMatches = matches;
     this.card.hidden = false;
+    this.card.scrollTop = 0;
     this.card.replaceChildren();
 
     const header = document.createElement("div");
     header.className = "header";
     const title = document.createElement("div");
     title.className = "title";
-    title.textContent = "API Source";
+    title.textContent = "API";
     const count = document.createElement("div");
     count.className = "count";
     count.textContent = matches.length === 1 ? "1 match" : `${matches.length} matches`;
@@ -187,6 +198,7 @@ export class Overlay {
     });
 
     this.placeAtCursor(clientX, clientY);
+    this.card.scrollTop = 0;
   }
 
   followCursor(clientX: number, clientY: number): void {
@@ -206,6 +218,7 @@ export class Overlay {
 
   hideCard(): void {
     if (this.card) {
+      this.card.scrollTop = 0;
       this.card.hidden = true;
       this.card.replaceChildren();
     }
@@ -230,6 +243,7 @@ export class Overlay {
     this.card = null;
     this.hit = null;
     this.onSelect = null;
+    this.onStopInspect = null;
   }
 
   private renderRow(match: ValueMatch, index: number): HTMLDivElement {
@@ -412,10 +426,36 @@ const styles = `
     left: 0;
     right: 0;
     z-index: 2147483646;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 0 36px;
+    box-sizing: border-box;
     background: #1a73e8;
     color: #fff;
     font: 12px/28px Arial, Helvetica, sans-serif;
     text-align: center;
+    pointer-events: auto;
+  }
+  .banner-text {
+    min-width: 0;
+  }
+  .banner-close {
+    position: absolute;
+    right: 8px;
+    top: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font: 18px/28px Arial, Helvetica, sans-serif;
+    cursor: pointer;
+  }
+  .banner-close:hover {
+    background: rgba(0, 0, 0, 0.18);
   }
   .card {
     position: fixed;

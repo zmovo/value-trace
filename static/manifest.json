@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "ValueTrace",
-  "version": "0.1.20",
-  "description": "Click a value. Trace it back to the API.",
-  "permissions": ["scripting", "activeTab", "clipboardWrite"],
+  "version": "0.1.22",
+  "description": "Start Inspect, click a number, see its API.",
+  "permissions": ["scripting", "activeTab", "clipboardWrite", "webNavigation"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "service-worker.js"

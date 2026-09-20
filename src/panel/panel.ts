@@ -69,8 +69,7 @@ function connect(): chrome.runtime.Port | null {
 function showReloadedMessage(): void {
   statusEl.textContent = "Extension reloaded — close DevTools, then open it again.";
   emptyEl.hidden = false;
-  emptyEl.textContent =
-    "This API Source panel is stale. Close DevTools completely (or press F12 twice), reopen it, then click Reload APIs.";
+  emptyEl.textContent = "This panel is stale. Close DevTools completely, then reopen it.";
   startBtn.disabled = true;
   stopBtn.disabled = true;
 }
@@ -116,10 +115,9 @@ function renderStatus(status: TabStatus): void {
   }
   if (status.valueCount === 0) {
     emptyEl.textContent =
-      "No API values yet. Keep this panel open, then click Reload APIs (or refresh the page).";
+      "No APIs yet. Use the page, then Start Inspect from the toolbar icon.";
   } else {
-    emptyEl.textContent =
-      "Start Inspect, click a number on the page, then click a match to open it here.";
+    emptyEl.textContent = "Click a match on the page to open the full JSON here.";
   }
 }
 
