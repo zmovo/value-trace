@@ -1,4 +1,5 @@
 import { primaryKeyOf } from "./normalize";
+import { pickLikelyMatches, scoreMatches } from "./ui-context";
 import { canonicalRequestUrl, generalizeJsonPath, isXhrOrFetch, toDisplayUrl, urlAffinity } from "./url";
 import type {
   CapturedResponse,
@@ -6,10 +7,13 @@ import type {
   MatchType,
   PanelSelection,
   RequestMeta,
+  UiHint,
   ValueMatch,
 } from "./types";
 
 const MAX_MATCHES_PER_KEY = 100;
+const MAX_SHOWN = 5;
+const AMBIGUOUS_KEYS = new Set(["0", "1"]);
 
 interface StoredRequest {
   meta: RequestMeta;
@@ -63,7 +67,7 @@ export class ValueIndex {
     return added;
   }
 
-  lookup(keys: string[], primaryKey: string, pageUrl: string): ValueMatch[] {
+  lookup(keys: string[], primaryKey: string, pageUrl: string, hints?: UiHint): ValueMatch[] {
     const merged = new Map<string, ValueMatch>();
 
     for (const key of keys) {
@@ -86,7 +90,9 @@ export class ValueIndex {
       }
     }
 
-    return collapseMatches([...merged.values()], pageUrl);
+    const collapsed = collapseMatches([...merged.values()], pageUrl);
+    const ranked = rankByHints(collapsed, hints, pageUrl);
+    return capMatches(ranked, primaryKey).slice(0, MAX_SHOWN);
   }
 
   getSelection(requestId: string, jsonPath: string): PanelSelection | null {
@@ -132,6 +138,32 @@ export class ValueIndex {
  * One UI number should not explode into 100 rows.
  * Keep the latest hit per API + field, and treat array indexes as the same field.
  */
+function rankByHints(matches: ValueMatch[], hints: UiHint | undefined, pageUrl: string): ValueMatch[] {
+  if (!hints?.tokens.length) {
+    return matches;
+  }
+  const ranked = scoreMatches(matches, hints);
+  ranked.sort((a, b) => {
+    const delta = (b.contextScore ?? 0) - (a.contextScore ?? 0);
+    if (delta !== 0) {
+      return delta;
+    }
+    return compareMatches(a, b, pageUrl);
+  });
+  return pickLikelyMatches(ranked);
+}
+
+function capMatches(matches: ValueMatch[], primaryKey: string): ValueMatch[] {
+  if (!AMBIGUOUS_KEYS.has(primaryKey)) {
+    return matches;
+  }
+  const good = matches.filter((match) => (match.contextScore ?? 0) >= 2);
+  if (good.length > 0) {
+    return good;
+  }
+  return matches.slice(0, 3);
+}
+
 function collapseMatches(matches: ValueMatch[], pageUrl: string): ValueMatch[] {
   const byField = new Map<string, ValueMatch>();
   for (const match of matches) {

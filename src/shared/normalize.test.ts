@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { flattenJson } from "./json-flatten";
-import { extractValues, normalizeValue, primaryKeyOf } from "./normalize";
+import { extractValues, normalizeValue, primaryKeyOf, stripNumericTokens } from "./normalize";
+import { pickLikelyMatches, scoreField, tokenizeHints } from "./ui-context";
 import { apiNameSuffix } from "./url";
 import { ValueIndex } from "./value-index";
 import type { CapturedResponse } from "./types";
@@ -97,7 +98,58 @@ describe("acceptance: UI 66,860 → /mock/dashboard", () => {
   });
 });
 
+describe("stripNumericTokens", () => {
+  it("keeps the card label next to a UI number", () => {
+    expect(stripNumericTokens("Total Entries\n2,249")).toBe("Total Entries");
+  });
+});
+
+describe("ui context ranking", () => {
+  it("scores Total Entries closer to total.IN than avgMap or a bare value", () => {
+    const tokens = tokenizeHints(["Total Entries"]);
+    const total = scoreField("$.data.total.IN", "https://host/api/v1/virtualarea/multi/trend", tokens);
+    const avg = scoreField("$.data.avgMap.IN", "https://host/api/v1/virtualarea/multi/trend", tokens);
+    const raw = scoreField("$.data[3].value", "https://host/api/v1/virtualarea/realtime/count", tokens);
+    expect(total).toBeGreaterThan(avg);
+    expect(total).toBeGreaterThan(raw);
+    expect(total - avg).toBeGreaterThanOrEqual(2);
+    expect(
+      pickLikelyMatches([
+        { jsonPath: "$.data.total.IN", contextScore: total },
+        { jsonPath: "$.data.avgMap.IN", contextScore: avg },
+        { jsonPath: "$.data[3].value", contextScore: raw },
+      ]).map((item) => item.jsonPath),
+    ).toEqual(["$.data.total.IN"]);
+  });
+});
+
 describe("ValueIndex", () => {
+  it("uses nearby HTML labels to pick the UI field among duplicate numbers", () => {
+    const index = new ValueIndex();
+    index.addCaptured(capture("r1", "/api/v1/virtualarea/multi/trend", "$.data.total.IN", 2249, 30));
+    index.addCaptured(capture("r2", "/api/v1/virtualarea/multi/trend", "$.data.avgMap.IN", 2249, 30));
+    index.addCaptured(capture("r3", "/api/v1/virtualarea/realtime/count", "$.data[3].value", 2249, 40));
+    const hints = { labels: ["Total Entries"], tokens: tokenizeHints(["Total Entries"]) };
+    const matches = index.lookup(["2249"], "2249", "https://host/screen/crowdInsight", hints);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].jsonPath).toBe("$.data.total.IN");
+    expect(matches[0].likely).toBe(true);
+  });
+
+  it("keeps Fast Pass 0 from exploding into every zero field", () => {
+    const index = new ValueIndex();
+    index.addCaptured(capture("r1", "/api/v1/queue/realtime/query/zone/cards", "$.data[3].fastPassTime.value", 0, 10));
+    index.addCaptured(capture("r2", "/api/v1/queue/realtime/query/zone/cards", "$.data[3].regularQueuingPassTime.percent", 0, 10));
+    index.addCaptured(capture("r3", "/api/v1/map/zone/auth/tree", "$.data[0].children[3].map2Config.availableSeats", 0, 10));
+    for (let i = 0; i < 20; i += 1) {
+      index.addCaptured(capture(`z${i}`, "/api/v1/other", `$.data[${i}].unused`, 0, i));
+    }
+    const hints = { labels: ["Fast Pass"], tokens: tokenizeHints(["Fast Pass"]) };
+    const matches = index.lookup(["0"], "0", "https://host/screen/queueInsight", hints);
+    expect(matches.length).toBeLessThanOrEqual(5);
+    expect(matches[0].jsonPath).toContain("fastPassTime");
+  });
+
   it("returns multiple candidates for the same number", () => {
     const index = new ValueIndex();
     index.addCaptured(capture("r1", "/mock/dashboard", "$.data.entryCount", 66860, 100));

@@ -6,7 +6,14 @@ export interface OverlayClickDetail {
   match: ValueMatch;
 }
 
-const CARD_WIDTH = 440;
+const CARD_WIDTH = 400;
+
+export interface OverlayAvoidRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
 
 export class Overlay {
   private host: HTMLDivElement | null = null;
@@ -17,6 +24,7 @@ export class Overlay {
   private pointerInside = false;
   private locked = false;
   private currentMatches: ValueMatch[] = [];
+  private avoid: OverlayAvoidRect | null = null;
 
   mount(onSelect: (detail: OverlayClickDetail) => void): void {
     this.onSelect = onSelect;
@@ -83,7 +91,7 @@ export class Overlay {
     }
     banner.hidden = !active;
     banner.textContent = active
-      ? "ValueTrace inspect mode — pause on a number to pin the popup."
+      ? "ValueTrace inspect mode — hover a number, then move onto the popup to copy."
       : "";
   }
 
@@ -95,7 +103,35 @@ export class Overlay {
     return this.pointerInside;
   }
 
-  show(matches: ValueMatch[], key: string, clientX: number, clientY: number): void {
+  containsPoint(clientX: number, clientY: number, pad = 16): boolean {
+    const rect = this.getCardRect();
+    if (!rect) {
+      return false;
+    }
+    return (
+      clientX >= rect.left - pad &&
+      clientX <= rect.right + pad &&
+      clientY >= rect.top - pad &&
+      clientY <= rect.bottom + pad
+    );
+  }
+
+  getCardRect(): OverlayAvoidRect | null {
+    if (!this.card || this.card.hidden) {
+      return null;
+    }
+    const rect = this.card.getBoundingClientRect();
+    return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+  }
+
+  show(
+    matches: ValueMatch[],
+    key: string,
+    clientX: number,
+    clientY: number,
+    uiLabel?: string,
+    avoid?: OverlayAvoidRect | null,
+  ): void {
     if (!this.card || !this.shadow) {
       return;
     }
@@ -106,6 +142,7 @@ export class Overlay {
 
     this.pinnedKey = key;
     this.locked = false;
+    this.avoid = avoid ?? null;
     this.currentMatches = matches;
     this.card.hidden = false;
     this.card.replaceChildren();
@@ -120,6 +157,12 @@ export class Overlay {
     count.textContent = matches.length === 1 ? "1 match" : `${matches.length} matches`;
     header.append(title, count);
     this.card.appendChild(header);
+    if (uiLabel) {
+      const via = document.createElement("div");
+      via.className = "via";
+      via.textContent = uiLabel;
+      this.card.appendChild(via);
+    }
 
     matches.forEach((match, index) => {
       this.card?.appendChild(this.renderRow(match, index));
@@ -152,6 +195,7 @@ export class Overlay {
     this.pointerInside = false;
     this.locked = false;
     this.currentMatches = [];
+    this.avoid = null;
   }
 
   contains(target: EventTarget | null): boolean {
@@ -175,6 +219,15 @@ export class Overlay {
     const method = document.createElement("span");
     method.className = "method";
     method.textContent = match.method;
+
+    if (match.likely) {
+      const likely = document.createElement("span");
+      likely.className = "likely";
+      likely.textContent = "likely";
+      row.append(method, likely);
+    } else {
+      row.appendChild(method);
+    }
 
     const url = document.createElement("button");
     url.type = "button";
@@ -200,15 +253,15 @@ export class Overlay {
     copy.type = "button";
     copy.className = "copy";
     copy.setAttribute("data-copy-index", String(index));
-    copy.textContent = "复制";
-    copy.title = `复制 ${suffix}`;
+    copy.textContent = "Copy";
+    copy.title = `Copy ${suffix}`;
 
     const copyHint = document.createElement("div");
     copyHint.className = "copy-hint";
     copyHint.textContent = suffix;
 
     footer.append(meta, copy);
-    row.append(method, url, path, copyHint, footer);
+    row.append(url, path, copyHint, footer);
     return row;
   }
 
@@ -216,7 +269,7 @@ export class Overlay {
     const name = apiNameSuffix(match.url);
     const ok = await writeClipboard(name);
     const label = button.textContent;
-    button.textContent = ok ? "已复制" : "失败";
+    button.textContent = ok ? "Copied" : "Failed";
     window.setTimeout(() => {
       button.textContent = label;
     }, 1200);
@@ -227,8 +280,18 @@ export class Overlay {
       return;
     }
     const height = this.card.getBoundingClientRect().height || 180;
-    let x = clientX + 16;
-    let y = clientY + 18;
+    let x = clientX + 18;
+    let y = clientY + 20;
+    if (this.avoid) {
+      x = this.avoid.right + 14;
+      y = this.avoid.top;
+      if (x + CARD_WIDTH > window.innerWidth - 8) {
+        x = Math.max(8, this.avoid.left - CARD_WIDTH - 14);
+      }
+      if (overlaps(x, y, CARD_WIDTH, height, this.avoid)) {
+        y = this.avoid.bottom + 12;
+      }
+    }
     if (x + CARD_WIDTH > window.innerWidth - 8) {
       x = Math.max(8, clientX - CARD_WIDTH - 12);
     }
@@ -238,9 +301,22 @@ export class Overlay {
     if (x < 8) {
       x = 8;
     }
+    if (y < 8) {
+      y = 8;
+    }
     this.card.style.left = `${Math.round(x)}px`;
     this.card.style.top = `${Math.round(y)}px`;
   }
+}
+
+function overlaps(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  avoid: OverlayAvoidRect,
+): boolean {
+  return x < avoid.right && x + width > avoid.left && y < avoid.bottom && y + height > avoid.top;
 }
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -282,10 +358,10 @@ const styles = `
     z-index: 2147483647;
     width: ${CARD_WIDTH}px;
     max-width: calc(100vw - 16px);
-    max-height: min(420px, calc(100vh - 16px));
+    max-height: min(300px, calc(100vh - 16px));
     overflow: auto;
     box-sizing: border-box;
-    padding: 12px;
+    padding: 10px;
     border-radius: 12px;
     background: #1f1f1f;
     color: #ececec;
@@ -308,10 +384,24 @@ const styles = `
   .count {
     color: #9aa0a6;
   }
+  .via {
+    color: #9aa0a6;
+    margin: -2px 0 10px;
+  }
+  .likely {
+    display: inline-block;
+    margin: 0 0 6px 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #174ea6;
+    color: #d2e3fc;
+    font-size: 11px;
+    font-weight: 700;
+  }
   .row {
     box-sizing: border-box;
-    margin: 0 0 8px;
-    padding: 10px;
+    margin: 0 0 6px;
+    padding: 8px;
     border: 1px solid #3c4043;
     border-radius: 10px;
     background: #2b2c2f;

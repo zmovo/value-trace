@@ -19,4 +19,4 @@ export interface Envelope<TType extends MessageTypeName, TPayload> {
   payload: TPayload;
 }
 
-export type PortName = "devtools" | "panel";
+export type PortName = "devtools" | "panel" | "inspect";

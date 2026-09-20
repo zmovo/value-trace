@@ -1,14 +1,14 @@
 import { isExtensionContextValid, isInvalidatedError } from "../shared/extension-context";
 import { log, logError } from "../shared/logger";
 import { MessageType } from "../shared/message";
-import type { LookupResult, ValueMatch } from "../shared/types";
+import type { LookupResult, UiHint, ValueMatch } from "../shared/types";
 import { Overlay } from "./overlay";
-import { isExtensionNode, resolveHoveredValue } from "./value-parser";
+import { isExtensionNode, resolveHoveredValue, stickyHoverElement } from "./value-parser";
 
 const MOVE_THROTTLE_MS = 32;
-const HIDE_DELAY_MS = 220;
-const PIN_AFTER_MS = 260;
-const VALUE_PAD = 8;
+const HIDE_DELAY_MS = 450;
+const PIN_AFTER_MS = 160;
+const VALUE_PAD = 10;
 
 export class Inspector {
   private readonly overlay = new Overlay();
@@ -19,6 +19,9 @@ export class Inspector {
   private pinTimer: number | null = null;
   private tabId: number | null = null;
   private hoverBounds: { left: number; top: number; right: number; bottom: number } | null = null;
+  private keepAlive: chrome.runtime.Port | null = null;
+  private matchCache = new Map<string, ValueMatch[]>();
+  private inspectSeq = 0;
 
   start(tabId?: number): void {
     if (this.active) {
@@ -29,8 +32,12 @@ export class Inspector {
     this.resetHover();
     this.overlay.mount((detail) => this.select(detail.match));
     this.overlay.setInspecting(true);
+    try {
+      this.keepAlive = isExtensionContextValid() ? chrome.runtime.connect({ name: "inspect" }) : null;
+    } catch {
+      this.keepAlive = null;
+    }
     document.addEventListener("mousemove", this.onMove, true);
-    document.addEventListener("mouseover", this.onMove, true);
     document.addEventListener("keydown", this.onKeyDown, true);
     document.documentElement.addEventListener("mouseleave", this.onPageLeave);
     document.documentElement.style.cursor = "crosshair";
@@ -46,8 +53,10 @@ export class Inspector {
     }
     this.active = false;
     this.resetHover();
+    this.keepAlive?.disconnect();
+    this.keepAlive = null;
+    this.matchCache.clear();
     document.removeEventListener("mousemove", this.onMove, true);
-    document.removeEventListener("mouseover", this.onMove, true);
     document.removeEventListener("keydown", this.onKeyDown, true);
     document.documentElement.removeEventListener("mouseleave", this.onPageLeave);
     document.documentElement.style.cursor = "";
@@ -75,13 +84,14 @@ export class Inspector {
     if (!this.active) {
       return;
     }
-    if (this.overlay.isPointerInside()) {
+    if (this.overlay.isPointerInside() || this.isOverSafeZone(event.clientX, event.clientY)) {
       this.clearHideTimer();
-      this.clearPinTimer();
-      this.overlay.lock();
-      return;
-    }
-    if (this.overlay.isVisible() && !this.isOverHoveredValue(event.clientX, event.clientY)) {
+      if (this.overlay.isPointerInside()) {
+        this.clearPinTimer();
+        this.overlay.lock();
+        return;
+      }
+    } else if (this.overlay.isVisible()) {
       this.scheduleHide();
     }
     const now = Date.now();
@@ -93,6 +103,7 @@ export class Inspector {
   };
 
   private async inspect(event: MouseEvent): Promise<void> {
+    const seq = (this.inspectSeq += 1);
     try {
       const target = document.elementFromPoint(event.clientX, event.clientY);
       if (this.overlay.isPointerInside()) {
@@ -100,7 +111,9 @@ export class Inspector {
         return;
       }
       if (!target) {
-        this.scheduleHide();
+        if (!this.isOverSafeZone(event.clientX, event.clientY)) {
+          this.scheduleHide();
+        }
         return;
       }
       if (isExtensionNode(target)) {
@@ -108,28 +121,36 @@ export class Inspector {
         return;
       }
 
-      const resolved = resolveHoveredValue(target);
+      const resolved = resolveHoveredValue(target, event.clientX, event.clientY);
       if (!resolved) {
-        this.scheduleHide();
+        if (!this.isOverSafeZone(event.clientX, event.clientY)) {
+          this.scheduleHide();
+        } else {
+          this.clearHideTimer();
+        }
         return;
       }
 
-      const lookupKey = `${resolved.value.primaryKey}|${resolved.value.rawText}`;
+      const hints = resolved.hints;
+      const lookupKey = `${resolved.value.primaryKey}|${resolved.value.rawText}|${hints.tokens.slice(0, 8).join(",")}`;
       const overValue = this.isOverHoveredValue(event.clientX, event.clientY);
-      if (lookupKey === this.lastKey && this.overlay.isVisible() && overValue) {
+      if (lookupKey === this.lastKey && this.overlay.isVisible() && (overValue || this.isOverSafeZone(event.clientX, event.clientY))) {
         this.clearHideTimer();
         this.rememberHover(resolved.element);
         this.overlay.followCursor(event.clientX, event.clientY);
         this.armPin();
         return;
       }
-      if (lookupKey === this.lastKey && this.overlay.isVisible() && !overValue) {
+      if (lookupKey === this.lastKey && this.overlay.isVisible() && !this.isOverSafeZone(event.clientX, event.clientY)) {
         this.scheduleHide();
         return;
       }
 
-      log("UI value detected:", resolved.value.primaryKey);
-      const matches = await this.lookup(resolved.value.lookupKeys, resolved.value.primaryKey);
+      log("UI value detected:", resolved.value.primaryKey, hints.labels[0] ?? "");
+      const matches = await this.lookup(resolved.value.lookupKeys, resolved.value.primaryKey, hints);
+      if (seq !== this.inspectSeq) {
+        return;
+      }
       this.lastKey = lookupKey;
       this.rememberHover(resolved.element);
       this.clearHideTimer();
@@ -139,7 +160,7 @@ export class Inspector {
         return;
       }
       this.overlay.unlock();
-      this.overlay.show(matches, lookupKey, event.clientX, event.clientY);
+      this.overlay.show(matches, lookupKey, event.clientX, event.clientY, hints.labels[0], this.hoverBounds);
       this.armPin();
     } catch (error) {
       if (isInvalidatedError(error)) {
@@ -202,7 +223,7 @@ export class Inspector {
   }
 
   private rememberHover(element: Element): void {
-    const rect = element.getBoundingClientRect();
+    const rect = stickyHoverElement(element).getBoundingClientRect();
     this.hoverBounds = {
       left: rect.left,
       top: rect.top,
@@ -212,19 +233,37 @@ export class Inspector {
   }
 
   private isOverHoveredValue(clientX: number, clientY: number): boolean {
-    const bounds = this.hoverBounds;
-    if (!bounds) {
-      return false;
-    }
-    return (
-      clientX >= bounds.left - VALUE_PAD &&
-      clientX <= bounds.right + VALUE_PAD &&
-      clientY >= bounds.top - VALUE_PAD &&
-      clientY <= bounds.bottom + VALUE_PAD
-    );
+    return pointInBounds(this.hoverBounds, clientX, clientY, VALUE_PAD);
   }
 
-  private lookup(keys: string[], primaryKey: string): Promise<ValueMatch[]> {
+  private isOverSafeZone(clientX: number, clientY: number): boolean {
+    if (this.isOverHoveredValue(clientX, clientY)) {
+      return true;
+    }
+    if (this.overlay.containsPoint(clientX, clientY, 24)) {
+      return true;
+    }
+    const card = this.overlay.getCardRect();
+    const hover = this.hoverBounds;
+    if (!card || !hover || !this.overlay.isVisible()) {
+      return false;
+    }
+    const left = Math.min(hover.left, card.left);
+    const right = Math.max(hover.right, card.right);
+    const top = Math.min(hover.top, card.top);
+    const bottom = Math.max(hover.bottom, card.bottom);
+    if (right - left > 520 || bottom - top > 360) {
+      return false;
+    }
+    return pointInBounds({ left, top, right, bottom }, clientX, clientY, 0);
+  }
+
+  private lookup(keys: string[], primaryKey: string, hints: UiHint): Promise<ValueMatch[]> {
+    const cacheKey = `${primaryKey}|${keys.join(",")}|${hints.tokens.join(",")}`;
+    const cached = this.matchCache.get(cacheKey);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
     return new Promise((resolve) => {
       if (!isExtensionContextValid()) {
         this.stop();
@@ -240,6 +279,7 @@ export class Inspector {
               keys,
               primaryKey,
               pageUrl: location.href,
+              hints,
             },
           },
           (response: { payload?: LookupResult } | undefined) => {
@@ -247,7 +287,14 @@ export class Inspector {
               resolve([]);
               return;
             }
-            resolve(response?.payload?.matches ?? []);
+            const matches = response?.payload?.matches ?? [];
+            if (matches.length > 0) {
+              if (this.matchCache.size > 80) {
+                this.matchCache.clear();
+              }
+              this.matchCache.set(cacheKey, matches);
+            }
+            resolve(matches);
           },
         );
       } catch {
@@ -278,4 +325,21 @@ export class Inspector {
       logError("Select source failed", error);
     }
   }
+}
+
+function pointInBounds(
+  bounds: { left: number; top: number; right: number; bottom: number } | null,
+  clientX: number,
+  clientY: number,
+  pad: number,
+): boolean {
+  if (!bounds) {
+    return false;
+  }
+  return (
+    clientX >= bounds.left - pad &&
+    clientX <= bounds.right + pad &&
+    clientY >= bounds.top - pad &&
+    clientY <= bounds.bottom + pad
+  );
 }

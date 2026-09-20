@@ -159,6 +159,9 @@ function handleCaptured(payload: CapturedResponse): void {
 
 chrome.runtime.onConnect.addListener((port) => {
   const name = port.name as PortName;
+  if (name === "inspect") {
+    return;
+  }
   let boundTabId: number | null = null;
 
   port.onMessage.addListener((message: { type?: string; payload?: unknown }) => {
@@ -320,6 +323,7 @@ chrome.runtime.onMessage.addListener(
           payload.keys,
           payload.primaryKey,
           payload.pageUrl,
+          payload.hints,
         );
         if (matches.length > 0) {
           log("Found", matches.length, "matches");

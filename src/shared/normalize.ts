@@ -117,6 +117,15 @@ export function parseDisplayToken(text: string): ExtractedValue | null {
 const VALUE_PATTERN =
   /[$￥¥€£]?\s*[+-]?[\d,]+(?:\.\d+)?\s*%|[+-]?[\d,]+(?:\.\d+)?[kKmM]\b|[$￥¥€£]\s*[+-]?[\d,]+(?:\.\d+)?|[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?|[+-]?\d+(?:\.\d+)?/g;
 
+/** Drop the hovered number so nearby label text can be used as a hint. */
+export function stripNumericTokens(text: string): string {
+  if (!text) {
+    return "";
+  }
+  VALUE_PATTERN.lastIndex = 0;
+  return text.replace(VALUE_PATTERN, " ").replace(/\s+/g, " ").trim();
+}
+
 export function extractValues(text: string): ExtractedValue[] {
   if (!text || text.length > 400) {
     return [];

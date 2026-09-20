@@ -39,6 +39,8 @@ export interface IndexedValue {
 export interface ValueMatch extends IndexedValue {
   displayUrl: string;
   matchType: MatchType;
+  contextScore?: number;
+  likely?: boolean;
 }
 
 export interface ExtractedValue {
@@ -47,11 +49,17 @@ export interface ExtractedValue {
   lookupKeys: string[];
 }
 
+export interface UiHint {
+  labels: string[];
+  tokens: string[];
+}
+
 export interface LookupRequest {
   tabId?: number;
   keys: string[];
   primaryKey: string;
   pageUrl: string;
+  hints?: UiHint;
 }
 
 export interface LookupResult {
