@@ -74,5 +74,18 @@ Upload `store/value-trace.zip`. Do not upload the repo root.
 
 ## Store graphics
 
-- Extension icons: `static/icons/icon16.png` … `icon128.png` (also used as the 128×128 store icon)
-- Screenshots (1280×800): `store/screenshots/`
+Upload these from the repo (already sized for the console):
+
+| Asset | File |
+| --- | --- |
+| Store icon 128×128 | `static/icons/icon128.png` |
+| Screenshot 1 (1280×800) | `store/screenshots/inspect-1280x800.png` |
+| Screenshot 2 (1280×800) | `store/screenshots/popup-1280x800.png` |
+| Small promo tile 440×280 | `store/screenshots/tile-440x280.png` |
+
+HTML sources for regenerating the shots live next to the PNGs. With Chrome installed:
+
+```bash
+# serve store/screenshots, then:
+# chrome --headless=new --window-size=1280,800 --screenshot=inspect-1280x800.png http://127.0.0.1:8765/inspect.html
+```

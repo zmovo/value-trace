@@ -39,3 +39,5 @@ Upload `store/value-trace.zip`. After this repo’s GitHub Pages is enabled on `
 
 - Demo: https://zmovo.github.io/value-trace/
 - Privacy: https://zmovo.github.io/value-trace/privacy.html
+
+Regenerate store screenshots (Chrome required): `npm run screenshots`
