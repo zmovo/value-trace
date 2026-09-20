@@ -1,6 +1,14 @@
 import { primaryKeyOf } from "./normalize";
 import { pickLikelyMatches, scoreMatches } from "./ui-context";
-import { canonicalRequestUrl, generalizeJsonPath, isXhrOrFetch, toDisplayUrl, urlAffinity } from "./url";
+import {
+  canonicalRequestUrl,
+  generalizeJsonPath,
+  isMetadataPath,
+  isXhrOrFetch,
+  normalizedLeaf,
+  toDisplayUrl,
+  urlAffinity,
+} from "./url";
 import type {
   CapturedResponse,
   IndexedValue,
@@ -90,8 +98,11 @@ export class ValueIndex {
       }
     }
 
-    const collapsed = collapseMatches([...merged.values()], pageUrl);
-    const ranked = rankByHints(collapsed, hints, pageUrl);
+    const collapsed = collapseMatches(
+      [...merged.values()].filter((match) => !isMetadataPath(match.jsonPath)),
+      pageUrl,
+    );
+    const ranked = rankByHints(collapseByLeaf(collapsed, pageUrl), hints, pageUrl);
     return capMatches(ranked, primaryKey).slice(0, MAX_SHOWN);
   }
 
@@ -164,6 +175,23 @@ function capMatches(matches: ValueMatch[], primaryKey: string): ValueMatch[] {
   return matches.slice(0, 3);
 }
 
+function collapseByLeaf(matches: ValueMatch[], pageUrl: string): ValueMatch[] {
+  const byLeaf = new Map<string, ValueMatch>();
+  const leftover: ValueMatch[] = [];
+  for (const match of matches) {
+    const leaf = normalizedLeaf(match.jsonPath);
+    if (!leaf || leaf.length < 6 || leaf === "value" || leaf === "values") {
+      leftover.push(match);
+      continue;
+    }
+    const existing = byLeaf.get(leaf);
+    if (!existing || betterMatch(match, existing, pageUrl)) {
+      byLeaf.set(leaf, match);
+    }
+  }
+  return [...byLeaf.values(), ...leftover];
+}
+
 function collapseMatches(matches: ValueMatch[], pageUrl: string): ValueMatch[] {
   const byField = new Map<string, ValueMatch>();
   for (const match of matches) {
@@ -192,8 +220,16 @@ function compareMatches(a: ValueMatch, b: ValueMatch, pageUrl: string): number {
   if (xhrDelta !== 0) {
     return xhrDelta;
   }
+  const trendDelta = Number(isTrendUrl(a.url)) - Number(isTrendUrl(b.url));
+  if (trendDelta !== 0) {
+    return trendDelta;
+  }
   if (a.timestamp !== b.timestamp) {
     return b.timestamp - a.timestamp;
   }
   return urlAffinity(b.url, pageUrl) - urlAffinity(a.url, pageUrl);
+}
+
+function isTrendUrl(url: string): boolean {
+  return /trend/i.test(url);
 }

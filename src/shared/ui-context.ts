@@ -76,6 +76,7 @@ const GROUPS: string[][] = [
   ["pass", "lane"],
   ["regular"],
   ["seat", "seats", "available"],
+  ["abandon", "abandoned", "abandons"],
 ];
 
 const COMPOUNDS: Record<string, string[]> = {

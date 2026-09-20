@@ -5,9 +5,10 @@ import { tokenizeHints } from "../shared/ui-context";
 const IGNORE_TAGS = new Set(["HTML", "BODY", "SCRIPT", "STYLE", "LINK", "META", "HEAD"]);
 const HOST_ID = "valuetrace-root";
 const EMPTY_HINTS: UiHint = { labels: [], tokens: [] };
-const STICKY_MAX_W = 360;
-const STICKY_MAX_H = 200;
-const STICKY_MAX_AREA = 320 * 180;
+const STICKY_MAX_W = 520;
+const STICKY_MAX_H = 220;
+const STICKY_MAX_AREA = 520 * 180;
+const UNIT_LABEL = /^(min|mins|minutes|minute|%|sec|secs|guests|guest)$/i;
 
 export function isExtensionNode(node: EventTarget | null): boolean {
   if (!(node instanceof Node)) {
@@ -133,11 +134,21 @@ function collectNearbyLabel(start: Element, value: ExtractedValue): UiHint {
   if (own && own !== value.rawText) {
     labels.push(own);
   }
-  if (labels.length === 0) {
+  const uniqueLabels = [...new Set(labels)].filter((label) => !isJunkLabel(label)).slice(0, 3);
+  if (uniqueLabels.length === 0) {
     return EMPTY_HINTS;
   }
-  const uniqueLabels = [...new Set(labels)].slice(0, 3);
   return { labels: uniqueLabels, tokens: tokenizeHints(uniqueLabels) };
+}
+
+function isJunkLabel(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 36 || UNIT_LABEL.test(trimmed)) {
+    return true;
+  }
+  const mins = trimmed.match(/min/gi)?.length ?? 0;
+  const passes = trimmed.match(/pass/gi)?.length ?? 0;
+  return mins >= 2 || passes >= 2;
 }
 
 function takeLabel(el: Element | null, labels: string[]): void {

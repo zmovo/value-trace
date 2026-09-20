@@ -56,6 +56,31 @@ export function generalizeJsonPath(path: string): string {
   return path.replace(/\[\d+\]/g, "[*]");
 }
 
+export function jsonPathLeaf(path: string): string {
+  const parts = generalizeJsonPath(path)
+    .split(".")
+    .map((part) => part.replace(/\[\*\]/g, ""))
+    .filter((part) => part && part !== "$");
+  const skip = new Set(["value", "values", "total", "data"]);
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    if (!skip.has(parts[i].toLowerCase())) {
+      return parts[i];
+    }
+  }
+  return parts[parts.length - 1] ?? "";
+}
+
+export function normalizedLeaf(path: string): string {
+  return jsonPathLeaf(path).replace(/_/g, "").toLowerCase();
+}
+
+const META_LEAF =
+  /^(order|index|idx|id|key|x|y|z|lng|lat|lon|zoom|width|height|sort|rank|level|opacity|zindex|page|offset|nth)$/i;
+
+export function isMetadataPath(path: string): boolean {
+  return META_LEAF.test(jsonPathLeaf(path));
+}
+
 export function isXhrOrFetch(resourceType: string): boolean {
   const type = resourceType.toLowerCase();
   return type === "xhr" || type === "fetch";

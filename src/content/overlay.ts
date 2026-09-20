@@ -280,33 +280,56 @@ export class Overlay {
       return;
     }
     const height = this.card.getBoundingClientRect().height || 180;
-    let x = clientX + 18;
-    let y = clientY + 20;
-    if (this.avoid) {
-      x = this.avoid.right + 14;
-      y = this.avoid.top;
-      if (x + CARD_WIDTH > window.innerWidth - 8) {
-        x = Math.max(8, this.avoid.left - CARD_WIDTH - 14);
-      }
-      if (overlaps(x, y, CARD_WIDTH, height, this.avoid)) {
-        y = this.avoid.bottom + 12;
-      }
-    }
-    if (x + CARD_WIDTH > window.innerWidth - 8) {
-      x = Math.max(8, clientX - CARD_WIDTH - 12);
-    }
-    if (y + height > window.innerHeight - 8) {
-      y = Math.max(8, clientY - height - 12);
-    }
-    if (x < 8) {
-      x = 8;
-    }
-    if (y < 8) {
-      y = 8;
-    }
-    this.card.style.left = `${Math.round(x)}px`;
-    this.card.style.top = `${Math.round(y)}px`;
+    const chosen = pickPlacement(clientX, clientY, CARD_WIDTH, height, this.avoid);
+    this.card.style.left = `${Math.round(chosen.x)}px`;
+    this.card.style.top = `${Math.round(chosen.y)}px`;
   }
+}
+
+function pickPlacement(
+  clientX: number,
+  clientY: number,
+  width: number,
+  height: number,
+  avoid: OverlayAvoidRect | null,
+): { x: number; y: number } {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const pad = 8;
+  const gap = 12;
+  const candidates: { x: number; y: number }[] = [];
+  if (avoid) {
+    candidates.push(
+      { x: avoid.right + gap, y: avoid.top },
+      { x: avoid.left - width - gap, y: avoid.top },
+      { x: avoid.left, y: avoid.bottom + gap },
+      { x: avoid.left, y: avoid.top - height - gap },
+    );
+  }
+  candidates.push({ x: clientX + 18, y: clientY + 20 }, { x: clientX - width - 12, y: clientY + 20 });
+
+  let best = candidates[0];
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const candidate of candidates) {
+    const x = clamp(candidate.x, pad, vw - width - pad);
+    const y = clamp(candidate.y, pad, vh - height - pad);
+    const fitsX = candidate.x >= pad && candidate.x + width <= vw - pad;
+    const fitsY = candidate.y >= pad && candidate.y + height <= vh - pad;
+    let score = (fitsX ? 40 : 0) + (fitsY ? 40 : 0);
+    if (avoid && !overlaps(x, y, width, height, avoid)) {
+      score += 80;
+    }
+    score += Math.min(vw - (x + width), x) + Math.min(vh - (y + height), y) * 0.25;
+    if (score > bestScore) {
+      bestScore = score;
+      best = { x, y };
+    }
+  }
+  return best;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function overlaps(

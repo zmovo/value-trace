@@ -19,6 +19,11 @@ describe("normalizeValue", () => {
     expect(normalizeValue(63.2)).toContain("63.2");
   });
 
+  it("does not treat 0.9 minutes as 90 percent", () => {
+    expect(normalizeValue("0.9")).toEqual(["0.9"]);
+    expect(normalizeValue("0.9")).not.toContain("90");
+  });
+
   it("strips currency and thousand separators", () => {
     expect(normalizeValue("$12,350.50")).toContain("12350.5");
     expect(normalizeValue("￥1,299")).toContain("1299");
@@ -134,6 +139,27 @@ describe("ValueIndex", () => {
     expect(matches).toHaveLength(1);
     expect(matches[0].jsonPath).toBe("$.data.total.IN");
     expect(matches[0].likely).toBe(true);
+  });
+
+  it("drops map metadata fields like order", () => {
+    const index = new ValueIndex();
+    index.addCaptured(capture("r1", "/api/v1/queue/realtime/query/zone/cards", "$.data[0].queueingCount.value", 16, 10));
+    index.addCaptured(capture("r2", "/api/v1/map/zone/auth/tree", "$.data[0].children[4].order", 16, 20));
+    const matches = index.lookup(["16"], "16", "https://host/screen/queueInsight");
+    expect(matches.map((item) => item.jsonPath)).toEqual(["$.data[0].queueingCount.value"]);
+  });
+
+  it("collapses abandonedGuests with ABANDONED_GUESTS", () => {
+    const index = new ValueIndex();
+    index.addCaptured(
+      capture("r1", "/api/v1/queue/realtime/query/zone/overview", "$.data.zoneRealtime.abandonedGuests.value", 4292, 30),
+    );
+    index.addCaptured(
+      capture("r2", "/api/v1/queue/realtime/query/zone/overview", "$.data.zoneTrends.ABANDONED_GUESTS.total", 4292, 10),
+    );
+    const matches = index.lookup(["4292"], "4292", "https://host/screen/queueInsight");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].jsonPath).toContain("abandonedGuests");
   });
 
   it("keeps Fast Pass 0 from exploding into every zero field", () => {

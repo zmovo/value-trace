@@ -106,7 +106,7 @@ export function parseDisplayToken(text: string): ExtractedValue | null {
   return {
     rawText: trimmed,
     primaryKey: canonicalNumber(n),
-    lookupKeys: unique(percentAliases(n).map(canonicalNumber)),
+    lookupKeys: [canonicalNumber(n)],
   };
 }
 
