@@ -20,6 +20,7 @@ export interface FlattenedEntry {
 export interface CapturedResponse {
   tabId: number;
   meta: RequestMeta;
+  requestBody?: string;
   responseBody: unknown;
   entries: FlattenedEntry[];
 }
@@ -76,6 +77,19 @@ export interface SelectSourcePayload {
   jsonPath: string;
 }
 
+export interface ExchangeRequest {
+  tabId?: number;
+  requestId: string;
+}
+
+export interface RequestExchange {
+  url: string;
+  method: string;
+  status: number;
+  requestBody: string;
+  responseBody: unknown;
+}
+
 export interface PanelSelection {
   meta: RequestMeta;
   responseBody: unknown;
@@ -100,4 +114,5 @@ export interface RawNetworkCapture {
   mimeType: string;
   resourceType: string;
   bodyText: string;
+  requestText?: string;
 }

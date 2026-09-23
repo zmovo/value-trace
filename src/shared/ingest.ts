@@ -4,6 +4,16 @@ import type { CapturedResponse, RawNetworkCapture } from "./types";
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
+export function boundedText(text: string | undefined, max = MAX_BODY_BYTES): string {
+  if (!text) {
+    return "";
+  }
+  if (text.length > max) {
+    return `(omitted, ${text.length} bytes)`;
+  }
+  return text;
+}
+
 export function tryParseJson(raw: string): unknown {
   const trimmed = raw.trim();
   if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[" && !/^-?\d/.test(trimmed))) {
@@ -43,6 +53,7 @@ export function capturedFromRaw(tabId: number, raw: RawNetworkCapture): Captured
       resourceType: raw.resourceType,
       timestamp: Date.now(),
     },
+    requestBody: boundedText(raw.requestText),
     responseBody: parsed,
     entries,
   };

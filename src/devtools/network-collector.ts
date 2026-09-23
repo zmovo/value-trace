@@ -1,5 +1,5 @@
 import { isExtensionContextValid } from "../shared/extension-context";
-import { createRequestId, sendToBackground, tryParseJson } from "../shared/ingest";
+import { boundedText, createRequestId, sendToBackground, tryParseJson } from "../shared/ingest";
 import { flattenJson } from "../shared/json-flatten";
 import { log, logError } from "../shared/logger";
 import { MessageType } from "../shared/message";
@@ -8,7 +8,11 @@ import type { CapturedResponse, RequestMeta } from "../shared/types";
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
 interface HarLikeRequest {
-  request: { url: string; method: string };
+  request: {
+    url: string;
+    method: string;
+    postData?: { text?: string; params?: { name: string; value?: string }[] };
+  };
   response: {
     status: number;
     content: { mimeType?: string; size?: number; text?: string };
@@ -93,6 +97,7 @@ async function captureRequest(tabId: number, request: HarLikeRequest): Promise<v
     const payload: CapturedResponse = {
       tabId,
       meta,
+      requestBody: boundedText(readRequestBody(request)),
       responseBody: parsed,
       entries,
     };
@@ -103,6 +108,20 @@ async function captureRequest(tabId: number, request: HarLikeRequest): Promise<v
   } catch (error) {
     logError("Network capture failed", error);
   }
+}
+
+function readRequestBody(request: HarLikeRequest): string {
+  const post = request.request.postData;
+  if (!post) {
+    return "";
+  }
+  if (post.text) {
+    return post.text;
+  }
+  if (post.params && post.params.length > 0) {
+    return post.params.map((param) => `${param.name}=${param.value ?? ""}`).join("&");
+  }
+  return "";
 }
 
 function readBody(request: HarLikeRequest): Promise<string | null> {

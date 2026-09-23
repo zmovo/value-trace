@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { flattenJson } from "./json-flatten";
 import { extractValues, normalizeValue, primaryKeyOf, stripNumericTokens } from "./normalize";
 import { pickLikelyMatches, scoreField, tokenizeHints } from "./ui-context";
-import { apiNameSuffix } from "./url";
+import { apiNameSuffix, fieldLabel, presentJsonPath, presentRequestUrl } from "./url";
 import { ValueIndex } from "./value-index";
 import type { CapturedResponse } from "./types";
 
@@ -66,6 +66,26 @@ describe("flattenJson", () => {
     const paths = entries.map((e) => e.jsonPath);
     expect(paths).toContain("$.data.entryCount");
     expect(paths).toContain("$.data.list[0].count");
+  });
+});
+
+describe("presentRequestUrl", () => {
+  it("keeps the service name and the resource path", () => {
+    expect(presentRequestUrl("/api/queue-management/api/v1/staff/history/query/zone")).toEqual({
+      service: "queue-management",
+      path: "/staff/history/query/zone",
+    });
+    expect(presentJsonPath("$.data.records[0].absentDuration")).toBe("data.records[0].absentDuration");
+  });
+});
+
+describe("fieldLabel", () => {
+  it("turns a JSON path into a readable field name", () => {
+    expect(fieldLabel("$.data[1].absentTime")).toBe("Absent time");
+    expect(fieldLabel("$.data.entryCount")).toBe("Entry count");
+    expect(fieldLabel("$.data.list[0].sumPassCount")).toBe("Sum pass count");
+    expect(fieldLabel("$.data.AVG_DWELL_TIME.data[171].value")).toBe("Avg dwell time");
+    expect(fieldLabel("$.data.total.IN")).toBe("Total IN");
   });
 });
 

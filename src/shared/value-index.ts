@@ -14,6 +14,7 @@ import type {
   IndexedValue,
   MatchType,
   PanelSelection,
+  RequestExchange,
   RequestMeta,
   UiHint,
   ValueMatch,
@@ -25,6 +26,7 @@ const AMBIGUOUS_KEYS = new Set(["0", "1"]);
 
 interface StoredRequest {
   meta: RequestMeta;
+  requestBody: string;
   responseBody: unknown;
 }
 
@@ -43,6 +45,7 @@ export class ValueIndex {
   addCaptured(captured: CapturedResponse): number {
     this.requests.set(captured.meta.requestId, {
       meta: captured.meta,
+      requestBody: captured.requestBody ?? "",
       responseBody: captured.responseBody,
     });
 
@@ -108,6 +111,28 @@ export class ValueIndex {
     return capMatches(ranked, primaryKey).slice(0, MAX_SHOWN);
   }
 
+  getExchange(requestId: string): RequestExchange | null {
+    const stored = this.requests.get(requestId);
+    if (!stored) {
+      return null;
+    }
+    return {
+      url: stored.meta.url,
+      method: stored.meta.method,
+      status: stored.meta.status,
+      requestBody: stored.requestBody.trim() ? stored.requestBody : this.findRequestBody(stored),
+      responseBody: stored.responseBody,
+    };
+  }
+
+  setRequestBody(requestId: string, requestBody: string): void {
+    const stored = this.requests.get(requestId);
+    if (!stored || stored.requestBody.trim() || !requestBody.trim()) {
+      return;
+    }
+    stored.requestBody = requestBody;
+  }
+
   getSelection(requestId: string, jsonPath: string): PanelSelection | null {
     const stored = this.requests.get(requestId);
     if (!stored) {
@@ -134,6 +159,27 @@ export class ValueIndex {
       requestCount: this.requests.size,
       valueCount: this.indexedValues,
     };
+  }
+
+  private findRequestBody(stored: StoredRequest): string {
+    const url = canonicalRequestUrl(stored.meta.url);
+    const response = JSON.stringify(stored.responseBody);
+    for (const other of this.requests.values()) {
+      if (!other.requestBody.trim() || other === stored) {
+        continue;
+      }
+      if (other.meta.method !== stored.meta.method) {
+        continue;
+      }
+      if (canonicalRequestUrl(other.meta.url) !== url) {
+        continue;
+      }
+      if (JSON.stringify(other.responseBody) !== response) {
+        continue;
+      }
+      return other.requestBody;
+    }
+    return "";
   }
 
   private lookupByPath(requestId: string, jsonPath: string): IndexedValue | null {

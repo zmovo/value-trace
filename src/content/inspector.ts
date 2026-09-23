@@ -1,5 +1,6 @@
-import { isExtensionContextValid, isInvalidatedError } from "../shared/extension-context";
+import { isExtensionContextValid, isInvalidatedError, markExtensionContextDead } from "../shared/extension-context";
 import { log, logError } from "../shared/logger";
+import { toCurl } from "../shared/exchange";
 import { MessageType } from "../shared/message";
 import type { LookupResult, UiHint, ValueMatch } from "../shared/types";
 import { Overlay } from "./overlay";
@@ -26,9 +27,16 @@ export class Inspector {
   private cursorStyle: HTMLStyleElement | null = null;
   private suppressPageClick = false;
 
-  start(tabId?: number): void {
+  start(tabId?: number): boolean {
+    if (!isExtensionContextValid()) {
+      return false;
+    }
     if (this.active) {
-      return;
+      this.overlay.setInspecting(true);
+      if (this.overlay.isInspecting()) {
+        return true;
+      }
+      this.active = false;
     }
     this.tabId = tabId ?? this.tabId;
     this.active = true;
@@ -36,12 +44,24 @@ export class Inspector {
     this.overlay.mount(
       (detail) => this.select(detail.match),
       () => this.requestStop(),
+      (match) => this.downloadExchange(match),
+      (match) => this.curlFor(match),
+      () => this.dismiss(),
     );
     this.overlay.setInspecting(true);
+    if (!this.overlay.isInspecting()) {
+      this.stop();
+      return false;
+    }
     try {
-      this.keepAlive = isExtensionContextValid() ? chrome.runtime.connect({ name: "inspect" }) : null;
-    } catch {
+      this.keepAlive = chrome.runtime.connect({ name: "inspect" });
+    } catch (error) {
       this.keepAlive = null;
+      if (isInvalidatedError(error)) {
+        markExtensionContextDead();
+        this.stop();
+        return false;
+      }
     }
     document.addEventListener("mousemove", this.onMove, true);
     document.addEventListener("pointerdown", this.onPointerDown, true);
@@ -52,6 +72,7 @@ export class Inspector {
     this.installCursorStyle();
     this.setCursor(false);
     log("Inspect mode on");
+    return true;
   }
 
   stop(): void {
@@ -64,7 +85,13 @@ export class Inspector {
     }
     this.active = false;
     this.resetPin();
-    this.keepAlive?.disconnect();
+    try {
+      this.keepAlive?.disconnect();
+    } catch (error) {
+      if (isInvalidatedError(error)) {
+        markExtensionContextDead();
+      }
+    }
     this.keepAlive = null;
     this.matchCache.clear();
     document.removeEventListener("mousemove", this.onMove, true);
@@ -332,6 +359,80 @@ export class Inspector {
     }
   }
 
+  private curlFor(match: ValueMatch): Promise<string | null> {
+    return new Promise((resolve) => {
+      if (!isExtensionContextValid()) {
+        this.stop();
+        resolve(null);
+        return;
+      }
+      try {
+        chrome.runtime.sendMessage(
+          {
+            type: MessageType.GET_REQUEST_SNAPSHOT,
+            payload: {
+              tabId: this.tabId ?? undefined,
+              requestId: match.requestId,
+            },
+          },
+          (response: { ok?: boolean; url?: string; method?: string; requestBody?: string } | undefined) => {
+            if (chrome.runtime.lastError || !response?.ok || !response.url || !response.method) {
+              resolve(null);
+              return;
+            }
+            resolve(toCurl(response.method, response.url, response.requestBody ?? ""));
+          },
+        );
+      } catch (error) {
+        if (isInvalidatedError(error)) {
+          this.stop();
+        }
+        resolve(null);
+      }
+    });
+  }
+
+  private downloadExchange(match: ValueMatch): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (!isExtensionContextValid()) {
+        this.stop();
+        resolve(false);
+        return;
+      }
+      try {
+        chrome.runtime.sendMessage(
+          {
+            type: MessageType.GET_REQUEST_EXCHANGE,
+            payload: {
+              tabId: this.tabId ?? undefined,
+              requestId: match.requestId,
+            },
+          },
+          (response: { ok?: boolean; filename?: string; text?: string } | undefined) => {
+            if (chrome.runtime.lastError) {
+              resolve(false);
+              return;
+            }
+            if (response?.ok) {
+              resolve(true);
+              return;
+            }
+            if (response?.filename && typeof response.text === "string") {
+              resolve(saveTextFile(response.filename, response.text));
+              return;
+            }
+            resolve(false);
+          },
+        );
+      } catch (error) {
+        if (isInvalidatedError(error)) {
+          this.stop();
+        }
+        resolve(false);
+      }
+    });
+  }
+
   private select(match: ValueMatch): void {
     if (!isExtensionContextValid()) {
       this.stop();
@@ -353,6 +454,25 @@ export class Inspector {
       }
       logError("Select source failed", error);
     }
+  }
+}
+
+function saveTextFile(filename: string, text: string): boolean {
+  try {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.rel = "noopener";
+    anchor.style.cssText = "position:fixed;left:-9999px;top:0";
+    document.documentElement.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return true;
+  } catch {
+    return false;
   }
 }
 

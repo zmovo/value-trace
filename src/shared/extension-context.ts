@@ -1,7 +1,21 @@
+let alive = true;
+
+export function markExtensionContextDead(): void {
+  alive = false;
+}
+
 export function isExtensionContextValid(): boolean {
+  if (!alive) {
+    return false;
+  }
   try {
-    return typeof chrome !== "undefined" && Boolean(chrome.runtime?.id);
+    if (typeof chrome === "undefined" || !chrome.runtime?.id) {
+      alive = false;
+      return false;
+    }
+    return true;
   } catch {
+    alive = false;
     return false;
   }
 }

@@ -33,6 +33,7 @@ const server = http.createServer((req, res) => {
 await new Promise((resolveListen) => server.listen(8765, "127.0.0.1", resolveListen));
 
 const captures = [
+  ["cover.html", "cover-1280x800.png", "1280,800"],
   ["inspect.html", "inspect-1280x800.png", "1280,800"],
   ["popup.html", "popup-1280x800.png", "1280,800"],
   ["tile.html", "tile-440x280.png", "440,280"],

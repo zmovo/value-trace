@@ -1,12 +1,12 @@
-import { apiNameSuffix } from "../shared/url";
 import type { ValueMatch } from "../shared/types";
+import { presentJsonPath, presentRequestUrl } from "../shared/url";
 import { HOST_ID } from "./value-parser";
 
 export interface OverlayClickDetail {
   match: ValueMatch;
 }
 
-const CARD_WIDTH = 400;
+const CARD_WIDTH = 440;
 
 export interface OverlayAvoidRect {
   left: number;
@@ -21,6 +21,9 @@ export class Overlay {
   private card: HTMLDivElement | null = null;
   private onSelect: ((detail: OverlayClickDetail) => void) | null = null;
   private onStopInspect: (() => void) | null = null;
+  private onDownload: ((match: ValueMatch) => Promise<boolean>) | null = null;
+  private onCurl: ((match: ValueMatch) => Promise<string | null>) | null = null;
+  private onDismiss: (() => void) | null = null;
   private pinnedKey = "";
   private pointerInside = false;
   private locked = false;
@@ -29,9 +32,18 @@ export class Overlay {
   private cardRect: OverlayAvoidRect | null = null;
   private hit: HTMLDivElement | null = null;
 
-  mount(onSelect: (detail: OverlayClickDetail) => void, onStopInspect?: () => void): void {
+  mount(
+    onSelect: (detail: OverlayClickDetail) => void,
+    onStopInspect?: () => void,
+    onDownload?: (match: ValueMatch) => Promise<boolean>,
+    onCurl?: (match: ValueMatch) => Promise<string | null>,
+    onDismiss?: () => void,
+  ): void {
     this.onSelect = onSelect;
     this.onStopInspect = onStopInspect ?? null;
+    this.onDownload = onDownload ?? null;
+    this.onCurl = onCurl ?? null;
+    this.onDismiss = onDismiss ?? null;
     if (this.host) {
       return;
     }
@@ -40,7 +52,7 @@ export class Overlay {
     host.id = HOST_ID;
     host.setAttribute("data-valuetrace", "root");
     host.style.cssText =
-      "all:initial;position:fixed;z-index:2147483646;top:0;left:0;width:0;height:0;pointer-events:none;";
+      "all:initial;position:fixed;z-index:2147483646;top:0;left:0;width:0;height:0;overflow:visible;pointer-events:none;";
     const shadow = host.attachShadow({ mode: "closed" });
     shadow.innerHTML = `${styles}<div class="banner" hidden><span class="banner-text"></span><button type="button" class="banner-close" aria-label="Stop inspect">×</button></div><div class="hit" hidden></div><div class="card" hidden></div>`;
 
@@ -71,12 +83,35 @@ export class Overlay {
         event.stopPropagation();
         const node = event.target instanceof Node ? event.target : null;
         const from = node instanceof Element ? node : node?.parentElement;
-        const copyBtn = from?.closest("[data-copy-index]");
-        if (copyBtn) {
-          const index = Number(copyBtn.getAttribute("data-copy-index"));
+        if (from?.closest("[data-close]")) {
+          this.onDismiss?.();
+          return;
+        }
+        const downloadBtn = from?.closest("[data-download-index]");
+        if (downloadBtn) {
+          const index = Number(downloadBtn.getAttribute("data-download-index"));
           const match = this.currentMatches[index];
           if (match) {
-            void this.copyApiName(match, copyBtn);
+            void this.downloadMatch(match, downloadBtn);
+          }
+          return;
+        }
+        const curlBtn = from?.closest("[data-curl-index]");
+        if (curlBtn) {
+          const index = Number(curlBtn.getAttribute("data-curl-index"));
+          const match = this.currentMatches[index];
+          if (match) {
+            void this.copyCurl(match, curlBtn);
+          }
+          return;
+        }
+        const copyBtn = from?.closest("[data-copy-kind]");
+        if (copyBtn) {
+          const index = Number(copyBtn.getAttribute("data-index"));
+          const match = this.currentMatches[index];
+          const kind = copyBtn.getAttribute("data-copy-kind");
+          if (match && (kind === "url" || kind === "field" || kind === "value")) {
+            void this.copyPiece(match, kind, copyBtn);
           }
           return;
         }
@@ -108,6 +143,11 @@ export class Overlay {
     label.textContent = active
       ? "See which API a number comes from — click a blue number to start"
       : "";
+  }
+
+  isInspecting(): boolean {
+    const banner = this.shadow?.querySelector(".banner");
+    return banner instanceof HTMLElement && !banner.hidden;
   }
 
   isVisible(): boolean {
@@ -182,21 +222,25 @@ export class Overlay {
     header.className = "header";
     const title = document.createElement("div");
     title.className = "title";
-    title.textContent = "API";
-    const count = document.createElement("div");
-    count.className = "count";
-    count.textContent = matches.length === 1 ? "1 match" : `${matches.length} matches`;
-    header.append(title, count);
-    this.card.appendChild(header);
-    if (uiLabel) {
-      const via = document.createElement("div");
-      via.className = "via";
-      via.textContent = uiLabel;
-      this.card.appendChild(via);
+    title.textContent = uiLabel || "Source";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "close";
+    close.setAttribute("data-close", "1");
+    close.setAttribute("aria-label", "Close");
+    close.textContent = "×";
+    if (matches.length > 1) {
+      const count = document.createElement("div");
+      count.className = "count";
+      count.textContent = `${matches.length} sources`;
+      header.append(title, count, close);
+    } else {
+      header.append(title, close);
     }
+    this.card.appendChild(header);
 
     matches.forEach((match, index) => {
-      this.card?.appendChild(this.renderRow(match, index));
+      this.card?.appendChild(this.renderRow(match, index, matches.length));
     });
 
     this.placeAtCursor(clientX, clientY);
@@ -246,69 +290,103 @@ export class Overlay {
     this.hit = null;
     this.onSelect = null;
     this.onStopInspect = null;
+    this.onDownload = null;
+    this.onCurl = null;
+    this.onDismiss = null;
   }
 
-  private renderRow(match: ValueMatch, index: number): HTMLDivElement {
-    const suffix = apiNameSuffix(match.url);
+  private renderRow(match: ValueMatch, index: number, total: number): HTMLDivElement {
     const row = document.createElement("div");
     row.className = "row";
+    const shown = presentRequestUrl(match.displayUrl);
+    const fieldText = presentJsonPath(match.jsonPath);
 
+    const urlBox = document.createElement("div");
+    urlBox.className = "url-box";
     const method = document.createElement("span");
     method.className = "method";
+    method.dataset.method = match.method.toLowerCase();
     method.textContent = match.method;
-
-    if (match.likely) {
-      const likely = document.createElement("span");
-      likely.className = "likely";
-      likely.textContent = "likely";
-      row.append(method, likely);
-    } else {
-      row.appendChild(method);
+    const urlText = document.createElement("div");
+    urlText.className = "url-text";
+    const urlPath = document.createElement("div");
+    urlPath.className = "url-path";
+    urlPath.textContent = shown.path;
+    urlPath.title = match.url;
+    urlText.appendChild(urlPath);
+    if (shown.service) {
+      const service = document.createElement("div");
+      service.className = "url-service";
+      service.textContent = shown.service;
+      urlText.appendChild(service);
     }
+    urlBox.append(method, urlText, iconButton("url", index, "Click to copy URL"));
 
-    const url = document.createElement("button");
-    url.type = "button";
-    url.className = "url";
-    url.setAttribute("data-match-index", String(index));
-    url.textContent = match.displayUrl;
-    url.title = match.url;
+    const fieldLabelEl = document.createElement("div");
+    fieldLabelEl.className = "section-label";
+    fieldLabelEl.textContent = total > 1 && match.likely ? "Response field · best" : "Response field";
+    const fieldBox = boxedValue(fieldText, "field", index, match.jsonPath);
 
-    const path = document.createElement("button");
-    path.type = "button";
-    path.className = "path";
-    path.setAttribute("data-match-index", String(index));
-    path.textContent = match.jsonPath;
+    const valueLabel = document.createElement("div");
+    valueLabel.className = "section-label";
+    valueLabel.textContent = "Value";
+    const valueBox = boxedValue(formatHeaderValue(match.rawValue), "value", index, String(match.rawValue));
 
-    const footer = document.createElement("div");
-    footer.className = "footer";
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    actions.append(actionButton("download", index), actionButton("curl", index));
 
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    meta.textContent = `${match.rawValue} · ${match.matchType === "exact" ? "Exact" : "Normalized"}`;
-
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "copy";
-    copy.setAttribute("data-copy-index", String(index));
-    copy.textContent = "Copy";
-    copy.title = `Copy ${suffix}`;
-
-    const copyHint = document.createElement("div");
-    copyHint.className = "copy-hint";
-    copyHint.textContent = suffix;
-
-    footer.append(meta, copy);
-    row.append(url, path, copyHint, footer);
+    row.append(urlBox, fieldLabelEl, fieldBox, valueLabel, valueBox, actions);
     return row;
   }
 
-  private async copyApiName(match: ValueMatch, button: Element): Promise<void> {
-    const name = apiNameSuffix(match.url);
-    const ok = await writeClipboard(name);
-    const label = button.textContent;
-    button.textContent = ok ? "Copied" : "Failed";
+  private async downloadMatch(match: ValueMatch, button: Element): Promise<void> {
+    if (!this.onDownload || button.hasAttribute("data-busy")) {
+      return;
+    }
+    const sub = button.querySelector(".action-sub");
+    if (!(sub instanceof HTMLElement)) {
+      return;
+    }
+    button.setAttribute("data-busy", "1");
+    const label = sub.textContent;
+    sub.textContent = "Saving…";
+    const ok = await this.onDownload(match);
+    sub.textContent = ok ? "Saved" : "Failed";
     window.setTimeout(() => {
-      button.textContent = label;
+      sub.textContent = label;
+      button.removeAttribute("data-busy");
+    }, 1200);
+  }
+
+  private async copyPiece(
+    match: ValueMatch,
+    kind: "url" | "field" | "value",
+    button: Element,
+  ): Promise<void> {
+    const text =
+      kind === "url" ? match.url : kind === "field" ? presentJsonPath(match.jsonPath) : String(match.rawValue);
+    const ok = await writeClipboard(text);
+    flashIcon(button, ok);
+  }
+
+  private async copyCurl(match: ValueMatch, button: Element): Promise<void> {
+    if (!this.onCurl || button.hasAttribute("data-busy")) {
+      return;
+    }
+    const title = button.querySelector(".action-title");
+    if (!(title instanceof HTMLElement)) {
+      return;
+    }
+    button.setAttribute("data-busy", "1");
+    const label = title.textContent;
+    title.textContent = "Copying…";
+    const curl = await this.onCurl(match);
+    const ok = curl != null && (await writeClipboard(curl));
+    title.textContent = ok ? "Copied" : "Failed";
+    window.setTimeout(() => {
+      title.textContent = label;
+      button.removeAttribute("data-busy");
     }, 1200);
   }
 
@@ -316,7 +394,7 @@ export class Overlay {
     if (!this.card) {
       return;
     }
-    const height = Math.min(this.card.offsetHeight || 180, 300);
+    const height = Math.min(this.card.offsetHeight || 280, 560);
     const chosen = pickPlacement(clientX, clientY, CARD_WIDTH, height, this.avoid);
     this.card.style.left = `${Math.round(chosen.x)}px`;
     this.card.style.top = `${Math.round(chosen.y)}px`;
@@ -389,6 +467,73 @@ function overlaps(
   return x < avoid.right && x + width > avoid.left && y < avoid.bottom && y + height > avoid.top;
 }
 
+function formatHeaderValue(value: string | number): string {
+  const numeric = typeof value === "number" ? value : /^-?\d+(?:\.\d+)?$/.test(String(value)) ? Number(value) : Number.NaN;
+  if (!Number.isFinite(numeric)) {
+    return String(value);
+  }
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(numeric);
+}
+
+function boxedValue(text: string, kind: "field" | "value", index: number, title: string): HTMLDivElement {
+  const box = document.createElement("div");
+  box.className = "box";
+  const label = document.createElement("div");
+  label.className = "box-text";
+  label.textContent = text;
+  label.title = title;
+  box.append(label, iconButton(kind, index, kind === "field" ? "Copy field" : "Copy value"));
+  return box;
+}
+
+function iconButton(kind: "url" | "field" | "value", index: number, title: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "icon";
+  button.setAttribute("data-copy-kind", kind);
+  button.setAttribute("data-index", String(index));
+  button.title = title;
+  button.innerHTML = `<span class="ico">${copyIcon}</span>`;
+  return button;
+}
+
+function actionButton(kind: "download" | "curl", index: number): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "action";
+  if (kind === "download") {
+    button.setAttribute("data-download-index", String(index));
+    button.innerHTML = `<span class="ico">${downloadIcon}</span><span class="action-copy"><span class="action-title">Download</span><span class="action-sub">URL + Request + Response</span></span>`;
+  } else {
+    button.classList.add("is-primary");
+    button.setAttribute("data-curl-index", String(index));
+    button.innerHTML = `<span class="ico">${curlIcon}</span><span class="action-copy"><span class="action-title">Copy cURL</span></span>`;
+  }
+  return button;
+}
+
+function flashIcon(button: Element, ok: boolean): void {
+  const icon = button.querySelector(".ico");
+  if (!(icon instanceof HTMLElement)) {
+    return;
+  }
+  const previous = icon.innerHTML;
+  icon.innerHTML = ok ? checkIcon : previous;
+  button.classList.toggle("is-done", ok);
+  if (!ok) {
+    button.classList.add("is-fail");
+  }
+  window.setTimeout(() => {
+    icon.innerHTML = previous;
+    button.classList.remove("is-done", "is-fail");
+  }, 1200);
+}
+
+const copyIcon = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const checkIcon = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 12.5 9.2 17 19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const downloadIcon = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 4v10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="m8 10 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 19h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const curlIcon = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m4 8 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 16h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+
 async function writeClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
@@ -412,6 +557,9 @@ const styles = `
     all: initial;
     pointer-events: none;
   }
+  [hidden] {
+    display: none !important;
+  }
   .hit {
     position: fixed;
     pointer-events: none;
@@ -426,7 +574,7 @@ const styles = `
     position: fixed;
     top: 0;
     left: 0;
-    right: 0;
+    width: 100vw;
     z-index: 2147483646;
     display: flex;
     align-items: center;
@@ -467,124 +615,196 @@ const styles = `
     z-index: 2147483647;
     width: ${CARD_WIDTH}px;
     max-width: calc(100vw - 16px);
-    max-height: min(300px, calc(100vh - 16px));
+    max-height: min(560px, calc(100vh - 24px));
     overflow: auto;
     box-sizing: border-box;
-    padding: 10px;
-    border-radius: 12px;
-    background: #1f1f1f;
-    color: #ececec;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-    border: 1px solid #3c4043;
-    font: 12px/1.45 Arial, Helvetica, sans-serif;
+    padding: 0 0 14px;
+    border-radius: 18px;
+    background: #1c1f27;
+    color: #f4f5f7;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.48);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
     pointer-events: auto;
+  }
+  .card::-webkit-scrollbar {
+    width: 10px;
+  }
+  .card::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border: 3px solid transparent;
+    border-radius: 10px;
+    background-clip: padding-box;
   }
   .header {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
+    align-items: center;
     gap: 12px;
-    margin-bottom: 10px;
+    padding: 14px 12px 0 16px;
   }
   .title {
-    font-weight: 700;
-    font-size: 13px;
+    min-width: 0;
+    flex: 1;
+    font-weight: 650;
+    font-size: 16px;
+    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
   }
   .count {
-    color: #9aa0a6;
+    flex: none;
+    color: #9aa1ad;
+    font-size: 12px;
+    font-weight: 500;
   }
-  .via {
-    color: #9aa0a6;
-    margin: -2px 0 10px;
+  .close {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #9aa1ad;
+    font: 20px/28px Arial, Helvetica, sans-serif;
+    cursor: pointer;
   }
-  .likely {
-    display: inline-block;
-    margin: 0 0 6px 6px;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: #174ea6;
-    color: #d2e3fc;
-    font-size: 11px;
-    font-weight: 700;
+  .close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
   }
   .row {
     box-sizing: border-box;
-    margin: 0 0 6px;
-    padding: 8px;
-    border: 1px solid #3c4043;
-    border-radius: 10px;
-    background: #2b2c2f;
+    margin: 0;
+    padding: 12px 16px 2px;
   }
-  .row:hover {
-    border-color: #8ab4f8;
+  .row + .row {
+    margin-top: 8px;
+    padding-top: 14px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
-  .method {
-    display: inline-block;
-    margin-bottom: 6px;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: #0d652d;
-    color: #ceead6;
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .url,
-  .path {
-    display: block;
-    width: 100%;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    text-align: left;
-    cursor: pointer;
-    color: inherit;
-    font: inherit;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-  .url {
-    color: #8ab4f8;
-    font-family: Consolas, "Courier New", monospace;
-    font-size: 12px;
-  }
-  .path {
-    margin-top: 6px;
-    color: #e8eaed;
-    font-family: Consolas, "Courier New", monospace;
-  }
-  .copy-hint {
-    margin-top: 6px;
-    color: #9aa0a6;
-    font-family: Consolas, "Courier New", monospace;
-    overflow-wrap: anywhere;
-  }
-  .footer {
+  .url-box,
+  .box {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-top: 8px;
+    gap: 10px;
+    min-width: 0;
+    box-sizing: border-box;
+    border-radius: 12px;
+    background: #262a33;
+    padding: 8px 8px 8px 10px;
   }
-  .meta {
-    color: #9aa0a6;
-  }
-  .copy {
+  .method {
     flex: none;
-    border: 0;
-    border-radius: 6px;
-    padding: 4px 8px;
-    background: #8ab4f8;
-    color: #202124;
-    font: 11px/1.3 Arial, Helvetica, sans-serif;
+    padding: 5px 8px;
+    border-radius: 8px;
+    background: #3c4048;
+    color: #fff;
+    font-size: 11px;
     font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .method[data-method="get"] { background: #1a73e8; }
+  .method[data-method="post"] { background: #1ea35a; }
+  .method[data-method="put"],
+  .method[data-method="patch"] { background: #c58a14; }
+  .method[data-method="delete"] { background: #d04a4a; }
+  .url-text,
+  .box-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .url-path,
+  .url-service,
+  .box-text {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .url-path,
+  .box-text {
+    color: #f4f5f7;
+    font: 13px/1.35 Consolas, "Cascadia Mono", ui-monospace, monospace;
+  }
+  .url-service {
+    margin-top: 2px;
+    color: #9aa1ad;
+    font: 12px/1.3 Consolas, "Cascadia Mono", ui-monospace, monospace;
+  }
+  .section-label {
+    margin: 12px 2px 6px;
+    color: #9aa1ad;
+    font-size: 12px;
+  }
+  .box {
+    background: #15181e;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 9px 8px 9px 12px;
+  }
+  .icon,
+  .action {
+    border: 0;
+    background: transparent;
+    color: #d0d3da;
     cursor: pointer;
   }
-  .copy:hover,
-  .url:hover,
-  .path:hover,
-  .pressed {
-    filter: brightness(1.08);
+  .icon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 8px;
   }
+  .icon:hover,
+  .action:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+  .icon[data-copy-kind="url"] { position: relative; }
+  .icon[data-copy-kind="url"]:hover::after {
+    content: "Click to copy URL";
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: #111318;
+    color: #f4f5f7;
+    font: 12px/1.2 "Segoe UI", system-ui, sans-serif;
+    white-space: nowrap;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+  }
+  .icon.is-done { color: #81c995; }
+  .icon.is-fail { color: #f28b82; }
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 52px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: #2a2e3a;
+    color: #f4f5f7;
+  }
+  .action:hover { background: #343846; }
+  .action.is-primary {
+    background: #1e7dff;
+    color: #fff;
+  }
+  .action.is-primary:hover { background: #3b8fff; }
+  .action-title,
+  .action-sub { display: block; text-align: left; }
+  .action-title { font-size: 13px; font-weight: 650; }
+  .action-sub { margin-top: 1px; color: #9aa1ad; font-size: 11px; font-weight: 500; }
+  .pressed { color: #fff; }
 </style>
 `;

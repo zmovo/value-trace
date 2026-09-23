@@ -1,4 +1,4 @@
-import { isExtensionContextValid, isInvalidatedError } from "../shared/extension-context";
+import { isExtensionContextValid, isInvalidatedError, markExtensionContextDead } from "../shared/extension-context";
 import { sendToBackground } from "../shared/ingest";
 import { logError } from "../shared/logger";
 import { MessageType } from "../shared/message";
@@ -14,17 +14,18 @@ isolated.__valueTraceInspector = inspector;
 
 if (!isolated.__valueTraceBooted) {
   isolated.__valueTraceBooted = true;
+  watchExtensionContext();
 
   chrome.runtime.onMessage.addListener(
     (message: { type?: string; payload?: { tabId?: number } }, _sender, sendResponse) => {
       try {
         if (!isExtensionContextValid()) {
           inspector.stop();
+          sendResponse({ ok: false });
           return false;
         }
         if (message?.type === MessageType.INSPECT_MODE_START) {
-          inspector.start(message.payload?.tabId);
-          sendResponse({ ok: true });
+          sendResponse({ ok: inspector.start(message.payload?.tabId) });
           return false;
         }
         if (message?.type === MessageType.INSPECT_MODE_STOP) {
@@ -66,10 +67,40 @@ if (!isolated.__valueTraceBooted) {
           mimeType: data.mimeType ?? "",
           resourceType: data.resourceType ?? "fetch",
           bodyText: data.bodyText,
+          requestText: typeof data.requestText === "string" ? data.requestText : "",
         } satisfies RawNetworkCapture,
       });
     } catch (error) {
+      if (isInvalidatedError(error)) {
+        markExtensionContextDead();
+        return;
+      }
       logError("Page capture bridge failed", error);
     }
   });
+}
+
+function watchExtensionContext(): void {
+  const connect = (): void => {
+    try {
+      const port = chrome.runtime.connect({ name: "inspect" });
+      port.onDisconnect.addListener(() => {
+        // The service worker going idle closes this port. That is not an
+        // extension reload, so keep the content script able to start inspect.
+        if (!isExtensionContextValid()) {
+          inspector.stop();
+          return;
+        }
+        window.setTimeout(connect, 300);
+      });
+    } catch (error) {
+      if (isInvalidatedError(error) || !isExtensionContextValid()) {
+        markExtensionContextDead();
+        inspector.stop();
+        return;
+      }
+      logError("Could not watch extension context", error);
+    }
+  };
+  connect();
 }

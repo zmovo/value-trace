@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ValueTrace store cover</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1280px;
+        height: 800px;
+        overflow: hidden;
+        background: #0b1220;
+        color: #e8eaed;
+        font: 16px/1.4 Arial, Helvetica, sans-serif;
+      }
+      .frame {
+        box-sizing: border-box;
+        width: 1280px;
+        height: 800px;
+        padding: 40px 48px 36px;
+        background: #0b1220;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 22px;
+      }
+      .mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        background: #1a73e8;
+        color: #fff;
+        font: 700 26px/44px Arial, Helvetica, sans-serif;
+        text-align: center;
+      }
+      .brand h1 {
+        margin: 0;
+        font-size: 28px;
+        letter-spacing: -0.02em;
+      }
+      .brand p {
+        margin: 2px 0 0;
+        color: #9aa0a6;
+        font-size: 15px;
+      }
+      .panels {
+        display: grid;
+        grid-template-columns: 1fr 56px 1fr;
+        gap: 0;
+        align-items: stretch;
+        height: 620px;
+      }
+      .panel {
+        box-sizing: border-box;
+        border-radius: 18px;
+        padding: 28px 28px 24px;
+        border: 1px solid #2a3447;
+      }
+      .pain {
+        background: #161b26;
+      }
+      .solve {
+        background: #132238;
+        border-color: #1a73e8;
+      }
+      .tag {
+        display: inline-block;
+        margin-bottom: 12px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font: 700 12px/1 Arial, Helvetica, sans-serif;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .pain .tag {
+        background: #3c2a2a;
+        color: #f28b82;
+      }
+      .solve .tag {
+        background: #174ea6;
+        color: #d2e3fc;
+      }
+      .panel h2 {
+        margin: 0 0 10px;
+        font-size: 26px;
+        line-height: 1.25;
+        letter-spacing: -0.02em;
+      }
+      .panel .sub {
+        margin: 0 0 22px;
+        color: #9aa0a6;
+        font-size: 15px;
+        max-width: 460px;
+      }
+      .fake-devtools {
+        border-radius: 12px;
+        background: #0f141d;
+        border: 1px solid #2a3447;
+        overflow: hidden;
+      }
+      .tabs {
+        display: flex;
+        gap: 0;
+        background: #1a2030;
+        border-bottom: 1px solid #2a3447;
+        font-size: 12px;
+        color: #9aa0a6;
+      }
+      .tabs span {
+        padding: 10px 14px;
+      }
+      .tabs .on {
+        color: #e8eaed;
+        border-bottom: 2px solid #8ab4f8;
+      }
+      .net {
+        padding: 12px 14px 16px;
+        font: 12px/1.55 Consolas, "Courier New", monospace;
+        color: #9aa0a6;
+      }
+      .net .row {
+        display: grid;
+        grid-template-columns: 48px 1fr 56px;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid #1f2937;
+      }
+      .net .dim {
+        opacity: 0.55;
+      }
+      .net .hunt {
+        color: #f28b82;
+      }
+      .bubble {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #2a1f1f;
+        color: #f28b82;
+        font-size: 14px;
+      }
+      .arrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #8ab4f8;
+        font: 700 28px Arial, Helvetica, sans-serif;
+      }
+      .steps {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 28px 1fr;
+        gap: 10px;
+        align-items: start;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #0f172a;
+        border: 1px solid #243247;
+        font-size: 14px;
+      }
+      .n {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #1a73e8;
+        color: #fff;
+        font: 700 13px/28px Arial, Helvetica, sans-serif;
+        text-align: center;
+      }
+      .result {
+        border-radius: 12px;
+        background: #1f1f1f;
+        border: 1px solid #3c4043;
+        padding: 14px;
+        font: 12px/1.45 Arial, Helvetica, sans-serif;
+      }
+      .result .top {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-weight: 700;
+      }
+      .result .via {
+        color: #9aa0a6;
+        margin-bottom: 10px;
+      }
+      .result .box {
+        padding: 10px;
+        border-radius: 10px;
+        background: #2b2c2f;
+        border: 1px solid #8ab4f8;
+      }
+      .method {
+        display: inline-block;
+        margin-right: 6px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: #0d652d;
+        color: #ceead6;
+        font-weight: 700;
+        font-size: 11px;
+      }
+      .url {
+        margin-top: 6px;
+        color: #8ab4f8;
+        font-family: Consolas, "Courier New", monospace;
+      }
+      .path {
+        margin-top: 4px;
+        color: #ececec;
+        font-family: Consolas, "Courier New", monospace;
+      }
+      .hit {
+        display: inline-block;
+        margin-top: 2px;
+        padding: 0 4px;
+        border: 2px solid #8ab4f8;
+        border-radius: 6px;
+        background: rgba(26, 115, 232, 0.2);
+        font-weight: 700;
+        font-size: 18px;
+      }
+      .metric {
+        margin: 0 0 14px;
+        color: #9aa0a6;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <div class="brand">
+        <div class="mark">V</div>
+        <div>
+          <h1>ValueTrace</h1>
+          <p>Click a number. See its API.</p>
+        </div>
+      </div>
+      <div class="panels">
+        <section class="panel pain">
+          <span class="tag">Pain</span>
+          <h2>Which API made this number?</h2>
+          <p class="sub">Dashboard shows 66,860. Network is full of requests. You dig JSON by hand.</p>
+          <div class="fake-devtools">
+            <div class="tabs">
+              <span>Elements</span>
+              <span class="on">Network</span>
+              <span>Console</span>
+            </div>
+            <div class="net">
+              <div class="row dim"><span>GET</span><span>/api/map/zones</span><span>200</span></div>
+              <div class="row dim"><span>GET</span><span>/api/queue/cards</span><span>200</span></div>
+              <div class="row hunt"><span>GET</span><span>/api/…/trend ?</span><span>200</span></div>
+              <div class="row dim"><span>GET</span><span>/api/realtime/count</span><span>200</span></div>
+              <div class="row dim"><span>GET</span><span>/api/auth/tree</span><span>200</span></div>
+            </div>
+          </div>
+          <div class="bubble">Guessing paths. Opening Response tabs. Still not sure.</div>
+        </section>
+        <div class="arrow">→</div>
+        <section class="panel solve">
+          <span class="tag">Solution</span>
+          <h2>Start Inspect, click the number</h2>
+          <p class="sub">ValueTrace matches the visible value to the local response field.</p>
+          <p class="metric">Entry Guests &nbsp; <span class="hit">66,860</span></p>
+          <div class="steps">
+            <div class="step"><div class="n">1</div><div>Start Inspect on the page</div></div>
+            <div class="step"><div class="n">2</div><div>Click a blue-boxed number</div></div>
+            <div class="step"><div class="n">3</div><div>See URL + field name · Click URL to copy</div></div>
+          </div>
+          <div class="result">
+            <div class="top"><span>API</span><span>1 match</span></div>
+            <div class="via">Entry Guests</div>
+            <div class="box">
+              <span class="method">GET</span>
+              <div class="url">/dashboard.json</div>
+              <div class="path">$.data.entryCount</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>

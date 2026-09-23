@@ -56,6 +56,60 @@ export function generalizeJsonPath(path: string): string {
   return path.replace(/\[\d+\]/g, "[*]");
 }
 
+const URL_NOISE = new Set(["api", "v1", "v2", "v3", "v4"]);
+
+/** Drop `api` / `v1` noise so the card can show a service name and a short path. */
+export function presentRequestUrl(displayUrl: string): { service: string; path: string } {
+  const pathOnly = displayUrl.split("?")[0] ?? displayUrl;
+  const kept = pathOnly.split("/").filter((part) => part && !URL_NOISE.has(part.toLowerCase()));
+  if (kept.length === 0) {
+    return { service: "", path: pathOnly || displayUrl };
+  }
+  if (kept.length === 1) {
+    return { service: "", path: `/${kept[0]}` };
+  }
+  return { service: kept[0], path: `/${kept.slice(1).join("/")}` };
+}
+
+/** `$.data.records[0].absentDuration` → `data.records[0].absentDuration`. */
+export function presentJsonPath(path: string): string {
+  return path.replace(/^\$\.?/, "");
+}
+
+const WRAPPER_SEGMENTS = new Set(["value", "values", "data", "item", "items", "list", "result", "results"]);
+
+/** A field name a colleague can read. `$.data[1].absentTime` becomes "Absent time". */
+export function fieldLabel(path: string): string {
+  const parts = generalizeJsonPath(path)
+    .split(".")
+    .map((part) => part.replace(/\[\*\]/g, ""))
+    .filter((part) => part && part !== "$");
+  const meaningful = parts.filter((part) => !WRAPPER_SEGMENTS.has(part.toLowerCase()));
+  const leaf = meaningful[meaningful.length - 1] ?? parts[parts.length - 1] ?? path;
+  const parent = meaningful.length > 1 ? meaningful[meaningful.length - 2] : "";
+  if (parent && /^[A-Z0-9]{1,4}$/.test(leaf)) {
+    return `${humanizeField(parent)} ${humanizeField(leaf)}`;
+  }
+  return humanizeField(leaf);
+}
+
+function humanizeField(raw: string): string {
+  if (/^[A-Z0-9]{1,4}$/.test(raw)) {
+    return raw;
+  }
+  const words = raw
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[_\s]+/)
+    .filter(Boolean);
+  return words
+    .map((word, index) => {
+      const lower = word.toLowerCase();
+      return index === 0 ? `${lower.charAt(0).toUpperCase()}${lower.slice(1)}` : lower;
+    })
+    .join(" ");
+}
+
 export function jsonPathLeaf(path: string): string {
   const parts = generalizeJsonPath(path)
     .split(".")

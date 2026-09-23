@@ -23,7 +23,7 @@ Until Pages is on, reviewers can still open the raw files after you publish the 
 
 ValueTrace shows which API response field produced a number on the page.
 
-You see a dashboard number and should not have to hunt the Network panel. Start Inspect, click a blue-boxed number, and see the request URL and JSON Path. Copy the last path segments when you need the API name.
+You see a dashboard number and should not have to hunt the Network panel. Start Inspect, click a blue-boxed number, and see the request, response field, and value. Copy any of them, download the call as a text file, or copy a cURL command.
 
 How to use
 1. Open the page that shows the number.
@@ -47,7 +47,8 @@ Network bodies stay in the browser. They are not uploaded. DevTools → API Sour
 
 - **activeTab:** Start Inspect on the tab the user has open when they click the toolbar action.
 - **scripting:** Inject the inspect content script on that tab if it is not already present.
-- **clipboardWrite:** Copy the API path suffix when the user clicks Copy.
+- **clipboardWrite:** Copy the URL, field, value, or cURL command when the user clicks a copy control.
+- **downloads:** Save a text file with the matched call’s URL, request, and response when the user clicks Download.
 - **webNavigation:** Watch main-frame commits only, so inspect stops when this tab refreshes or opens another site.
 - **host_permissions / &lt;all_urls&gt;:** The number can be on any site the developer is debugging. Content scripts read visible numbers and locally captured JSON. They do not change site data.
 
@@ -59,7 +60,7 @@ Demo: https://zmovo.github.io/value-trace/
 2. Open the demo. If the page was already open, refresh once so content scripts run.
 3. Click the ValueTrace icon → Start Inspect.
 4. Click **66,860**. The overlay should show `/dashboard.json` and `$.data.entryCount`.
-5. Click Copy to copy the API name suffix.
+5. Use the copy icons, Download, or Copy cURL on the card.
 6. Click × on the blue banner to stop. Refreshing the demo tab also stops inspect when the new page starts.
 
 Expected: inspect is one tab at a time. Starting inspect on a second tab stops the first. In-page clicks and switching Chrome tabs do not stop inspect.
@@ -79,8 +80,9 @@ Upload these from the repo (already sized for the console):
 | Asset | File |
 | --- | --- |
 | Store icon 128×128 | `static/icons/icon128.png` |
-| Screenshot 1 (1280×800) | `store/screenshots/inspect-1280x800.png` |
-| Screenshot 2 (1280×800) | `store/screenshots/popup-1280x800.png` |
+| Cover / Screenshot 1 (1280×800) | `store/screenshots/cover-1280x800.png` |
+| Screenshot 2 (1280×800) | `store/screenshots/inspect-1280x800.png` |
+| Screenshot 3 (1280×800) | `store/screenshots/popup-1280x800.png` |
 | Small promo tile 440×280 | `store/screenshots/tile-440x280.png` |
 
 HTML sources for regenerating the shots live next to the PNGs. With Chrome installed:

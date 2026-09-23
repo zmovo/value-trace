@@ -1,5 +1,6 @@
 const FLAG = "__valueTracePageHook";
 const SOURCE = "valuetrace-page";
+const MAX_TEXT = 5 * 1024 * 1024;
 
 interface PageWindow extends Window {
   [FLAG]?: boolean;
@@ -19,6 +20,7 @@ function publish(detail: {
   durationMs: number;
   mimeType: string;
   resourceType: string;
+  requestText: string;
   bodyText: string;
 }): void {
   window.postMessage({ source: SOURCE, type: "CAPTURE", ...detail }, window.location.origin);
@@ -31,9 +33,12 @@ function installFetchHook(): void {
     init?: RequestInit,
   ): Promise<Response> {
     const started = performance.now();
+    const requestText = snapshotRequestBody(input, init);
     return original(input, init).then((response) => {
       queueMicrotask(() => {
-        void reportFetch(input, init, response, started);
+        void requestText.then((text) => {
+          void reportFetch(input, init, response, started, text);
+        });
       });
       return response;
     });
@@ -45,6 +50,7 @@ async function reportFetch(
   init: RequestInit | undefined,
   response: Response,
   started: number,
+  requestText: string,
 ): Promise<void> {
   try {
     const mimeType = response.headers.get("content-type") ?? "";
@@ -63,6 +69,7 @@ async function reportFetch(
       durationMs: performance.now() - started,
       mimeType,
       resourceType: "fetch",
+      requestText,
       bodyText,
     });
   } catch {
@@ -102,29 +109,101 @@ function installXhrHook(): void {
 
   XMLHttpRequest.prototype.send = function valueTraceSend(body?: Document | XMLHttpRequestBodyInit | null): void {
     const started = performance.now();
+    const requestText = readXhrBody(body);
     this.addEventListener("load", function onLoad() {
-      try {
-        const mimeType = this.getResponseHeader("content-type") ?? "";
-        if (!/json/i.test(mimeType)) {
-          return;
+      void requestText.then((text) => {
+        try {
+          const mimeType = this.getResponseHeader("content-type") ?? "";
+          if (!/json/i.test(mimeType)) {
+            return;
+          }
+          const responseText = typeof this.responseText === "string" ? this.responseText : "";
+          if (!responseText || responseText.length > MAX_TEXT) {
+            return;
+          }
+          publish({
+            url: this.responseURL || window.location.href,
+            method: ((this as XMLHttpRequest & { __vtMethod?: string }).__vtMethod ?? "GET").toUpperCase(),
+            status: this.status,
+            durationMs: performance.now() - started,
+            mimeType,
+            resourceType: "xhr",
+            requestText: text,
+            bodyText: responseText,
+          });
+        } catch {
+          // Never break the page.
         }
-        const text = typeof this.responseText === "string" ? this.responseText : "";
-        if (!text || text.length > 5 * 1024 * 1024) {
-          return;
-        }
-        publish({
-          url: this.responseURL || window.location.href,
-          method: ((this as XMLHttpRequest & { __vtMethod?: string }).__vtMethod ?? "GET").toUpperCase(),
-          status: this.status,
-          durationMs: performance.now() - started,
-          mimeType,
-          resourceType: "xhr",
-          bodyText: text,
-        });
-      } catch {
-        // Never break the page.
-      }
+      });
     });
     send.call(this, body);
   };
+}
+
+function capText(text: string): string {
+  if (text.length <= MAX_TEXT) {
+    return text;
+  }
+  return `(omitted, ${text.length} bytes)`;
+}
+
+async function snapshotRequestBody(input: RequestInfo | URL, init?: RequestInit): Promise<string> {
+  try {
+    if (init && init.body != null) {
+      return capText(await bodyInitToText(init.body));
+    }
+    if (input instanceof Request) {
+      const length = Number(input.headers.get("content-length") ?? "0");
+      if (length > MAX_TEXT) {
+        return `(omitted, ${length} bytes)`;
+      }
+      return capText(await input.clone().text());
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+async function readXhrBody(body: Document | XMLHttpRequestBodyInit | null | undefined): Promise<string> {
+  if (body == null) {
+    return "";
+  }
+  try {
+    if (body instanceof Document) {
+      return capText(new XMLSerializer().serializeToString(body));
+    }
+    return capText(await bodyInitToText(body));
+  } catch {
+    return "";
+  }
+}
+
+async function bodyInitToText(body: BodyInit): Promise<string> {
+  if (typeof body === "string") {
+    return body;
+  }
+  if (body instanceof URLSearchParams) {
+    return body.toString();
+  }
+  if (body instanceof Blob) {
+    if (body.size > MAX_TEXT) {
+      return `(omitted, ${body.size} bytes)`;
+    }
+    return body.text();
+  }
+  if (body instanceof ArrayBuffer) {
+    return new TextDecoder().decode(body);
+  }
+  if (ArrayBuffer.isView(body)) {
+    return new TextDecoder().decode(body);
+  }
+  if (typeof FormData !== "undefined" && body instanceof FormData) {
+    const parts: string[] = [];
+    body.forEach((value, key) => {
+      parts.push(typeof value === "string" ? `${key}=${value}` : `${key}=[file ${value.name}]`);
+    });
+    return parts.join("&");
+  }
+  return "";
 }

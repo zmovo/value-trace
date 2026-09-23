@@ -1,8 +1,10 @@
+import { exchangeFilename, formatExchangeText } from "../shared/exchange";
 import { capturedFromRaw } from "../shared/ingest";
 import { log, logError } from "../shared/logger";
 import { MessageType, type PortName } from "../shared/message";
 import type {
   CapturedResponse,
+  ExchangeRequest,
   InspectPayload,
   LookupRequest,
   PanelSelection,
@@ -22,7 +24,7 @@ const tabs = new Map<number, TabState>();
 const panelPorts = new Map<number, Set<chrome.runtime.Port>>();
 const devtoolsPorts = new Map<number, Set<chrome.runtime.Port>>();
 const lastSelections = new Map<number, PanelSelection>();
-const recentCaptures = new Map<string, number>();
+const recentCaptures = new Map<string, { at: number; tabId: number; requestId: string }>();
 const lastCaptureUrls = new Map<number, string>();
 let inspectingTabId: number | null = null;
 
@@ -106,8 +108,8 @@ function broadcastSelection(tabId: number, selection: PanelSelection): void {
 
 async function sendToTab(tabId: number, message: { type: string; payload?: unknown }): Promise<boolean> {
   try {
-    await chrome.tabs.sendMessage(tabId, message);
-    return true;
+    const response = (await chrome.tabs.sendMessage(tabId, message, { frameId: 0 })) as { ok?: boolean } | undefined;
+    return response?.ok === true;
   } catch {
     return false;
   }
@@ -115,34 +117,40 @@ async function sendToTab(tabId: number, message: { type: string; payload?: unkno
 
 async function injectContent(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({
-    target: { tabId },
+    target: { tabId, frameIds: [0] },
     files: ["content.js"],
   });
 }
 
-async function setInspect(tabId: number, active: boolean): Promise<void> {
+async function setInspect(tabId: number, active: boolean): Promise<boolean> {
   if (active && inspectingTabId != null && inspectingTabId !== tabId) {
     await applyInspect(inspectingTabId, false);
   }
-  await applyInspect(tabId, active);
+  return applyInspect(tabId, active);
 }
 
-async function applyInspect(tabId: number, active: boolean): Promise<void> {
-  const state = stateFor(tabId);
-  state.inspectActive = active;
-  inspectingTabId = active ? tabId : inspectingTabId === tabId ? null : inspectingTabId;
+async function applyInspect(tabId: number, active: boolean): Promise<boolean> {
   const type = active ? MessageType.INSPECT_MODE_START : MessageType.INSPECT_MODE_STOP;
-  let ok = await sendToTab(tabId, { type, payload: { tabId } });
-  if (!ok && active) {
+  let delivered = await sendToTab(tabId, { type, payload: { tabId } });
+  if (!delivered && active) {
     try {
       await injectContent(tabId);
-      ok = await sendToTab(tabId, { type, payload: { tabId } });
+      delivered = await sendToTab(tabId, { type, payload: { tabId } });
     } catch (error) {
       logError("Could not inject content script", error);
     }
   }
-  log(active ? "Inspect mode started" : "Inspect mode stopped", tabId);
+  const state = stateFor(tabId);
+  const on = active && delivered;
+  state.inspectActive = on;
+  if (on) {
+    inspectingTabId = tabId;
+  } else if (inspectingTabId === tabId) {
+    inspectingTabId = null;
+  }
+  log(on ? "Inspect mode started" : active ? "Inspect mode did not start" : "Inspect mode stopped", tabId);
   broadcastStatus(tabId);
+  return !active || delivered;
 }
 
 function stopInspectOnFullNavigation(tabId: number): void {
@@ -160,10 +168,17 @@ function handleCaptured(payload: CapturedResponse): void {
   const key = captureKey(payload);
   const now = Date.now();
   const previous = recentCaptures.get(key);
-  if (previous && now - previous < 2000) {
+  if (previous && now - previous.at < 2000) {
+    if (payload.requestBody) {
+      stateFor(previous.tabId).index.setRequestBody(previous.requestId, payload.requestBody);
+    }
     return;
   }
-  recentCaptures.set(key, now);
+  recentCaptures.set(key, {
+    at: now,
+    tabId: payload.tabId,
+    requestId: payload.meta.requestId,
+  });
 
   const state = stateFor(payload.tabId);
   const added = state.index.addCaptured(payload);
@@ -171,6 +186,41 @@ function handleCaptured(payload: CapturedResponse): void {
   log("Network captured");
   log("Indexed", added, "values");
   broadcastStatus(payload.tabId);
+}
+
+async function downloadExchange(
+  tabId: number,
+  requestId: string,
+): Promise<{ ok: boolean; filename?: string; text?: string }> {
+  const exchange = stateFor(tabId).index.getExchange(requestId);
+  if (!exchange) {
+    return { ok: false };
+  }
+  const text = formatExchangeText(exchange);
+  const filename = exchangeFilename(exchange.method, exchange.url);
+  try {
+    // Service workers have no URL.createObjectURL. chrome.downloads accepts a data URL.
+    await chrome.downloads.download({
+      url: textToDataUrl(text),
+      filename,
+      saveAs: false,
+      conflictAction: "uniquify",
+    });
+    return { ok: true };
+  } catch (error) {
+    logError("Download failed", error);
+    return { ok: false, filename, text };
+  }
+}
+
+function textToDataUrl(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return `data:text/plain;charset=utf-8;base64,${btoa(binary)}`;
 }
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -353,8 +403,8 @@ chrome.runtime.onMessage.addListener(
 
       if (message.type === MessageType.INSPECT_MODE_START) {
         const payload = message.payload as InspectPayload;
-        void setInspect(payload.tabId, true).then(() => {
-          sendResponse({ ok: true, payload: statusOf(payload.tabId) });
+        void setInspect(payload.tabId, true).then((started) => {
+          sendResponse({ ok: started, payload: statusOf(payload.tabId) });
         });
         return true;
       }
@@ -390,6 +440,34 @@ chrome.runtime.onMessage.addListener(
         }
         sendResponse({ ok: Boolean(selection) });
         return false;
+      }
+
+      if (message.type === MessageType.GET_REQUEST_SNAPSHOT) {
+        const payload = message.payload as ExchangeRequest;
+        const tabId = payload?.tabId ?? sender.tab?.id;
+        const exchange =
+          tabId == null || !payload?.requestId
+            ? null
+            : stateFor(tabId).index.getExchange(payload.requestId);
+        sendResponse(
+          exchange
+            ? { ok: true, url: exchange.url, method: exchange.method, requestBody: exchange.requestBody }
+            : { ok: false },
+        );
+        return false;
+      }
+
+      if (message.type === MessageType.GET_REQUEST_EXCHANGE) {
+        const payload = message.payload as ExchangeRequest;
+        const tabId = payload?.tabId ?? sender.tab?.id;
+        if (tabId == null || !payload?.requestId) {
+          sendResponse({ ok: false });
+          return false;
+        }
+        void downloadExchange(tabId, payload.requestId).then((result) => {
+          sendResponse(result);
+        });
+        return true;
       }
     } catch (error) {
       logError("Runtime message failed", error);
