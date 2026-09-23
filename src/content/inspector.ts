@@ -218,6 +218,10 @@ export class Inspector {
       this.lastKey = lookupKey;
       if (matches.length === 0) {
         this.resetPin();
+        this.overlay.notify(
+          "Not recorded yet. Refresh the page, then click this number again.",
+          "Refresh the page",
+        );
         return;
       }
       const avoid = toBounds(resolved.element.getBoundingClientRect());

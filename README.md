@@ -13,7 +13,7 @@ Repo: https://github.com/zmovo/value-trace
 3. Click the ValueTrace icon → **Start Inspect**
 4. Click a blue-boxed number
 
-**×** on the banner stops inspect. **Esc** closes the API card. Only one tab can inspect at a time. Refreshing this tab, or opening another site in it, stops inspect when the new page starts. Switching tabs or clicking around on the same page does not.
+**Stop** on the ValueTrace chip stops inspect. **Esc** closes the API card. Only one tab can inspect at a time. Refreshing this tab keeps inspect on. Opening another site in it stops inspect when the new page starts. Switching tabs or clicking around on the same page does not.
 
 DevTools → API Source is optional (full JSON).
 

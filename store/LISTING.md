@@ -29,9 +29,9 @@ How to use
 1. Open the page that shows the number.
 2. Click the ValueTrace icon and press Start Inspect.
 3. Click a blue number.
-4. Press Esc to close the card, or × on the banner to stop inspect.
+4. Press Esc to close the card, or Stop on the ValueTrace chip to stop inspect.
 
-Only one tab can inspect at a time. Refreshing this tab, or opening another site in it, stops inspect when the new page starts. Switching Chrome tabs does not.
+Only one tab can inspect at a time. Refreshing this tab keeps inspect on. Opening another site in it stops inspect when the new page starts. Switching Chrome tabs does not.
 
 Network bodies stay in the browser. They are not uploaded. DevTools → API Source is optional if you want the full JSON.
 
@@ -61,7 +61,7 @@ Demo: https://zmovo.github.io/value-trace/
 3. Click the ValueTrace icon → Start Inspect.
 4. Click **66,860**. The overlay should show `/dashboard.json` and `$.data.entryCount`.
 5. Use the copy icons, Download, or Copy cURL on the card.
-6. Click × on the blue banner to stop. Refreshing the demo tab also stops inspect when the new page starts.
+6. Click Stop on the ValueTrace chip to stop. Refreshing the demo tab keeps inspect on. Opening another site in that tab stops it.
 
 Expected: inspect is one tab at a time. Starting inspect on a second tab stops the first. In-page clicks and switching Chrome tabs do not stop inspect.
 

@@ -54,7 +54,7 @@ export class Overlay {
     host.style.cssText =
       "all:initial;position:fixed;z-index:2147483646;top:0;left:0;width:0;height:0;overflow:visible;pointer-events:none;";
     const shadow = host.attachShadow({ mode: "closed" });
-    shadow.innerHTML = `${styles}<div class="banner" hidden><span class="banner-text"></span><button type="button" class="banner-close" aria-label="Stop inspect">×</button></div><div class="hit" hidden></div><div class="card" hidden></div>`;
+    shadow.innerHTML = `${styles}<div class="banner" hidden><span class="banner-mark" aria-hidden="true">V</span><span class="banner-copy"><strong class="banner-name">ValueTrace</strong><span class="banner-text"></span></span><button type="button" class="banner-close">Stop</button></div><div class="hit" hidden></div><div class="card" hidden></div>`;
 
     this.host = host;
     this.shadow = shadow;
@@ -79,10 +79,16 @@ export class Overlay {
     this.card?.addEventListener(
       "pointerdown",
       (event) => {
-        event.preventDefault();
-        event.stopPropagation();
         const node = event.target instanceof Node ? event.target : null;
         const from = node instanceof Element ? node : node?.parentElement;
+        const selectingUrl = Boolean(from?.closest(".url-path"));
+        if (!selectingUrl) {
+          event.preventDefault();
+        }
+        event.stopPropagation();
+        if (selectingUrl) {
+          return;
+        }
         if (from?.closest("[data-close]")) {
           this.onDismiss?.();
           return;
@@ -140,14 +146,38 @@ export class Overlay {
       return;
     }
     banner.hidden = !active;
-    label.textContent = active
-      ? "See which API a number comes from — click a blue number to start"
-      : "";
+    banner.classList.remove("is-warn");
+    label.textContent = active ? "Click a number" : "";
   }
 
   isInspecting(): boolean {
     const banner = this.shadow?.querySelector(".banner");
     return banner instanceof HTMLElement && !banner.hidden;
+  }
+
+  notify(text: string, emphasis?: string): void {
+    const banner = this.shadow?.querySelector(".banner");
+    const label = this.shadow?.querySelector(".banner-text");
+    if (!(banner instanceof HTMLElement) || banner.hidden || !(label instanceof HTMLElement)) {
+      return;
+    }
+    const previous = label.textContent ?? "";
+    banner.classList.add("is-warn");
+    label.replaceChildren();
+    if (emphasis && text.includes(emphasis)) {
+      const [before, after] = text.split(emphasis);
+      const strong = document.createElement("strong");
+      strong.textContent = emphasis;
+      label.append(document.createTextNode(before), strong, document.createTextNode(after));
+    } else {
+      label.textContent = text;
+    }
+    window.setTimeout(() => {
+      if (label.textContent === text) {
+        banner.classList.remove("is-warn");
+        label.textContent = previous;
+      }
+    }, 2600);
   }
 
   isVisible(): boolean {
@@ -322,21 +352,26 @@ export class Overlay {
     }
     urlBox.append(method, urlText, iconButton("url", index, "Click to copy URL"));
 
-    const fieldLabelEl = document.createElement("div");
-    fieldLabelEl.className = "section-label";
-    fieldLabelEl.textContent = total > 1 && match.likely ? "Response field · best" : "Response field";
-    const fieldBox = boxedValue(fieldText, "field", index, match.jsonPath);
-
-    const valueLabel = document.createElement("div");
-    valueLabel.className = "section-label";
-    valueLabel.textContent = "Value";
-    const valueBox = boxedValue(formatHeaderValue(match.rawValue), "value", index, String(match.rawValue));
+    const data = document.createElement("div");
+    data.className = "data";
+    const head = document.createElement("div");
+    head.className = "data-head";
+    const headLabel = document.createElement("span");
+    headLabel.textContent = total > 1 && match.likely ? "Response data · best" : "Response data";
+    head.append(headLabel);
+    const body = document.createElement("div");
+    body.className = "data-body";
+    body.append(
+      dataRow("Field", fieldText, "field", index, fieldText),
+      dataRow("Value", formatHeaderValue(match.rawValue), "value", index, String(match.rawValue)),
+    );
+    data.append(head, body);
 
     const actions = document.createElement("div");
     actions.className = "actions";
     actions.append(actionButton("download", index), actionButton("curl", index));
 
-    row.append(urlBox, fieldLabelEl, fieldBox, valueLabel, valueBox, actions);
+    row.append(urlBox, data, actions);
     return row;
   }
 
@@ -475,15 +510,24 @@ function formatHeaderValue(value: string | number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(numeric);
 }
 
-function boxedValue(text: string, kind: "field" | "value", index: number, title: string): HTMLDivElement {
-  const box = document.createElement("div");
-  box.className = "box";
-  const label = document.createElement("div");
-  label.className = "box-text";
-  label.textContent = text;
-  label.title = title;
-  box.append(label, iconButton(kind, index, kind === "field" ? "Copy field" : "Copy value"));
-  return box;
+function dataRow(
+  label: string,
+  text: string,
+  kind: "field" | "value",
+  index: number,
+  title: string,
+): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "data-row";
+  const name = document.createElement("div");
+  name.className = "data-label";
+  name.textContent = label;
+  const value = document.createElement("div");
+  value.className = "data-value";
+  value.textContent = text;
+  value.title = title;
+  row.append(name, value, iconButton(kind, index, kind === "field" ? "Copy field" : "Copy value"));
+  return row;
 }
 
 function iconButton(kind: "url" | "field" | "value", index: number, title: string): HTMLButtonElement {
@@ -505,7 +549,6 @@ function actionButton(kind: "download" | "curl", index: number): HTMLButtonEleme
     button.setAttribute("data-download-index", String(index));
     button.innerHTML = `<span class="ico">${downloadIcon}</span><span class="action-copy"><span class="action-title">Download</span><span class="action-sub">URL + Request + Response</span></span>`;
   } else {
-    button.classList.add("is-primary");
     button.setAttribute("data-curl-index", String(index));
     button.innerHTML = `<span class="ico">${curlIcon}</span><span class="action-copy"><span class="action-title">Copy cURL</span></span>`;
   }
@@ -572,43 +615,69 @@ const styles = `
   }
   .banner {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
     z-index: 2147483646;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 12px;
-    min-height: 32px;
-    padding: 6px 40px;
+    gap: 10px;
+    max-width: min(720px, calc(100vw - 24px));
+    padding: 8px 8px 8px 10px;
     box-sizing: border-box;
-    background: #1a73e8;
-    color: #fff;
-    font: 12px/18px Arial, Helvetica, sans-serif;
-    text-align: center;
+    border-radius: 999px;
+    background: #1c1f27;
+    color: #f4f5f7;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    font: 12px/1.3 "Segoe UI", system-ui, sans-serif;
     pointer-events: auto;
   }
-  .banner-text {
+  .banner-mark {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: #1a73e8;
+    color: #fff;
+    font: 700 13px/22px Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+  .banner-copy {
     min-width: 0;
-    max-width: min(720px, calc(100vw - 80px));
+    padding-right: 4px;
+  }
+  .banner-name,
+  .banner-text {
+    display: block;
+  }
+  .banner-name {
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .banner-text {
+    color: #b7bdc7;
+    white-space: nowrap;
+  }
+  .banner.is-warn .banner-text {
+    color: #f6d48a;
+  }
+  .banner-text strong {
+    color: #fff;
+    font-weight: 700;
   }
   .banner-close {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    width: 28px;
-    height: 28px;
-    padding: 0;
+    flex: none;
     border: 0;
-    background: transparent;
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: #2a303a;
     color: #fff;
-    font: 18px/28px Arial, Helvetica, sans-serif;
-    transform: translateY(-50%);
+    font: 650 12px/1.2 "Segoe UI", system-ui, sans-serif;
     cursor: pointer;
   }
   .banner-close:hover {
-    background: rgba(0, 0, 0, 0.18);
+    background: #343b48;
   }
   .card {
     position: fixed;
@@ -645,8 +714,8 @@ const styles = `
   .title {
     min-width: 0;
     flex: 1;
-    font-weight: 650;
-    font-size: 16px;
+    font-weight: 700;
+    font-size: 18px;
     letter-spacing: -0.02em;
     overflow-wrap: anywhere;
   }
@@ -682,8 +751,7 @@ const styles = `
     padding-top: 14px;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
-  .url-box,
-  .box {
+  .url-box {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -708,37 +776,68 @@ const styles = `
   .method[data-method="put"],
   .method[data-method="patch"] { background: #c58a14; }
   .method[data-method="delete"] { background: #d04a4a; }
-  .url-text,
-  .box-text {
+  .url-text {
     flex: 1;
     min-width: 0;
   }
   .url-path,
   .url-service,
-  .box-text {
+  .data-value {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .url-path,
-  .box-text {
+  .url-path {
     color: #f4f5f7;
     font: 13px/1.35 Consolas, "Cascadia Mono", ui-monospace, monospace;
+    user-select: text;
+    cursor: text;
   }
   .url-service {
     margin-top: 2px;
     color: #9aa1ad;
     font: 12px/1.3 Consolas, "Cascadia Mono", ui-monospace, monospace;
   }
-  .section-label {
-    margin: 12px 2px 6px;
-    color: #9aa1ad;
-    font-size: 12px;
-  }
-  .box {
-    background: #15181e;
+  .data {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 14px;
+    background: #23262f;
     border: 1px solid rgba(255, 255, 255, 0.06);
-    padding: 9px 8px 9px 12px;
+  }
+  .data-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px 8px;
+    color: #d5d8e0;
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .data-body {
+    border-radius: 10px;
+    background: #15181e;
+    overflow: hidden;
+  }
+  .data-row {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) 28px;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 6px 8px 6px 14px;
+  }
+  .data-row + .data-row {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+  .data-label {
+    color: #9aa1ad;
+    font-size: 13px;
+  }
+  .data-value {
+    color: #f4f5f7;
+    text-align: left;
+    font: 600 14px/1.3 Consolas, "Cascadia Mono", ui-monospace, monospace;
   }
   .icon,
   .action {
@@ -796,11 +895,6 @@ const styles = `
     color: #f4f5f7;
   }
   .action:hover { background: #343846; }
-  .action.is-primary {
-    background: #1e7dff;
-    color: #fff;
-  }
-  .action.is-primary:hover { background: #3b8fff; }
   .action-title,
   .action-sub { display: block; text-align: left; }
   .action-title { font-size: 13px; font-weight: 650; }

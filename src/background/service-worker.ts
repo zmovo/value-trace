@@ -27,6 +27,9 @@ const lastSelections = new Map<number, PanelSelection>();
 const recentCaptures = new Map<string, { at: number; tabId: number; requestId: string }>();
 const lastCaptureUrls = new Map<number, string>();
 let inspectingTabId: number | null = null;
+const inspectWanted = new Set<number>();
+const inspectEpoch = new Map<number, number>();
+const inspectHost = new Map<number, string>();
 
 function stateFor(tabId: number): TabState {
   const existing = tabs.get(tabId);
@@ -122,17 +125,55 @@ async function injectContent(tabId: number): Promise<void> {
   });
 }
 
+function bumpEpoch(tabId: number): number {
+  const next = (inspectEpoch.get(tabId) ?? 0) + 1;
+  inspectEpoch.set(tabId, next);
+  return next;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "";
+  }
+}
+
+async function rememberHost(tabId: number): Promise<void> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const host = hostOf(tab.url ?? "");
+    if (host) {
+      inspectHost.set(tabId, host);
+    }
+  } catch (error) {
+    logError("Could not read tab host", error);
+  }
+}
+
 async function setInspect(tabId: number, active: boolean): Promise<boolean> {
+  if (active) {
+    inspectWanted.add(tabId);
+    await rememberHost(tabId);
+  } else {
+    inspectWanted.delete(tabId);
+    inspectHost.delete(tabId);
+    bumpEpoch(tabId);
+  }
   if (active && inspectingTabId != null && inspectingTabId !== tabId) {
+    inspectWanted.delete(inspectingTabId);
+    inspectHost.delete(inspectingTabId);
+    bumpEpoch(inspectingTabId);
     await applyInspect(inspectingTabId, false);
   }
   return applyInspect(tabId, active);
 }
 
 async function applyInspect(tabId: number, active: boolean): Promise<boolean> {
+  const epoch = inspectEpoch.get(tabId) ?? 0;
   const type = active ? MessageType.INSPECT_MODE_START : MessageType.INSPECT_MODE_STOP;
   let delivered = await sendToTab(tabId, { type, payload: { tabId } });
-  if (!delivered && active) {
+  if (!delivered && active && inspectWanted.has(tabId)) {
     try {
       await injectContent(tabId);
       delivered = await sendToTab(tabId, { type, payload: { tabId } });
@@ -140,8 +181,14 @@ async function applyInspect(tabId: number, active: boolean): Promise<boolean> {
       logError("Could not inject content script", error);
     }
   }
+  if ((inspectEpoch.get(tabId) ?? 0) !== epoch || (active && !inspectWanted.has(tabId))) {
+    return false;
+  }
   const state = stateFor(tabId);
   const on = active && delivered;
+  if (!on && active && state.inspectActive) {
+    return true;
+  }
   state.inspectActive = on;
   if (on) {
     inspectingTabId = tabId;
@@ -153,11 +200,44 @@ async function applyInspect(tabId: number, active: boolean): Promise<boolean> {
   return !active || delivered;
 }
 
-function stopInspectOnFullNavigation(tabId: number): void {
-  if (!tabs.get(tabId)?.inspectActive) {
+async function reattachInspect(tabId: number, epoch: number): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (!inspectWanted.has(tabId) || inspectEpoch.get(tabId) !== epoch) {
+      return;
+    }
+    const started = await applyInspect(tabId, true);
+    if (!inspectWanted.has(tabId) || inspectEpoch.get(tabId) !== epoch) {
+      return;
+    }
+    if (started) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+}
+
+function continueInspectAfterNavigation(tabId: number, url: string): void {
+  if (!inspectWanted.has(tabId)) {
     return;
   }
-  void setInspect(tabId, false);
+  const nextHost = hostOf(url);
+  const previousHost = inspectHost.get(tabId);
+  if (previousHost && nextHost && previousHost !== nextHost) {
+    inspectWanted.delete(tabId);
+    inspectHost.delete(tabId);
+    bumpEpoch(tabId);
+    void applyInspect(tabId, false);
+    return;
+  }
+  if (nextHost) {
+    inspectHost.set(tabId, nextHost);
+  }
+  const epoch = bumpEpoch(tabId);
+  const state = tabs.get(tabId);
+  if (state) {
+    state.inspectActive = false;
+  }
+  void reattachInspect(tabId, epoch);
 }
 
 function captureKey(payload: CapturedResponse): string {
@@ -401,6 +481,14 @@ chrome.runtime.onMessage.addListener(
         return false;
       }
 
+      if (message.type === MessageType.CONTENT_READY) {
+        const tabId = sender.tab?.id;
+        if (tabId != null && inspectWanted.has(tabId)) {
+          void reattachInspect(tabId, inspectEpoch.get(tabId) ?? 0);
+        }
+        return false;
+      }
+
       if (message.type === MessageType.INSPECT_MODE_START) {
         const payload = message.payload as InspectPayload;
         void setInspect(payload.tabId, true).then((started) => {
@@ -480,13 +568,16 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) {
     return;
   }
-  stopInspectOnFullNavigation(details.tabId);
+  continueInspectAfterNavigation(details.tabId, details.url);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (inspectingTabId === tabId) {
     inspectingTabId = null;
   }
+  inspectWanted.delete(tabId);
+  inspectEpoch.delete(tabId);
+  inspectHost.delete(tabId);
   tabs.delete(tabId);
   lastSelections.delete(tabId);
   lastCaptureUrls.delete(tabId);

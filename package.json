@@ -1,6 +1,6 @@
 {
   "name": "value-trace",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "private": true,
   "description": "See which API a number comes from. Click a number to start.",
   "type": "module",

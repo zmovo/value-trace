@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ValueTrace",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "See which API a number comes from. Click a number to start.",
   "homepage_url": "https://github.com/zmovo/value-trace",
   "icons": {

@@ -15,6 +15,7 @@ isolated.__valueTraceInspector = inspector;
 if (!isolated.__valueTraceBooted) {
   isolated.__valueTraceBooted = true;
   watchExtensionContext();
+  announceReady();
 
   chrome.runtime.onMessage.addListener(
     (message: { type?: string; payload?: { tabId?: number } }, _sender, sendResponse) => {
@@ -78,6 +79,19 @@ if (!isolated.__valueTraceBooted) {
       logError("Page capture bridge failed", error);
     }
   });
+}
+
+function announceReady(): void {
+  try {
+    if (!isExtensionContextValid()) {
+      return;
+    }
+    chrome.runtime.sendMessage({ type: MessageType.CONTENT_READY });
+  } catch (error) {
+    if (isInvalidatedError(error)) {
+      markExtensionContextDead();
+    }
+  }
 }
 
 function watchExtensionContext(): void {
