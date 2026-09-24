@@ -7,6 +7,75 @@ export interface OverlayClickDetail {
 }
 
 const CARD_WIDTH = 440;
+const BANNER_MARGIN = 16;
+const BANNER_SNAP = 40;
+
+export interface BannerPoint {
+  left: number;
+  top: number;
+}
+
+const bannerMemory = globalThis as typeof globalThis & {
+  __valueTraceBannerPos?: BannerPoint;
+};
+
+export function defaultBannerPosition(
+  width: number,
+  height: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): BannerPoint {
+  return clampBannerPosition(
+    (viewportWidth - width) / 2,
+    viewportHeight - height - BANNER_MARGIN,
+    width,
+    height,
+    viewportWidth,
+    viewportHeight,
+  );
+}
+
+export function clampBannerPosition(
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): BannerPoint {
+  const maxLeft = Math.max(BANNER_MARGIN, viewportWidth - width - BANNER_MARGIN);
+  const maxTop = Math.max(BANNER_MARGIN, viewportHeight - height - BANNER_MARGIN);
+  return {
+    left: clamp(left, BANNER_MARGIN, maxLeft),
+    top: clamp(top, BANNER_MARGIN, maxTop),
+  };
+}
+
+export function dockBannerPosition(
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): BannerPoint {
+  const parked = clampBannerPosition(left, top, width, height, viewportWidth, viewportHeight);
+  const maxLeft = Math.max(BANNER_MARGIN, viewportWidth - width - BANNER_MARGIN);
+  const maxTop = Math.max(BANNER_MARGIN, viewportHeight - height - BANNER_MARGIN);
+  let x = parked.left;
+  let y = parked.top;
+  if (x - BANNER_MARGIN <= BANNER_SNAP) {
+    x = BANNER_MARGIN;
+  } else if (maxLeft - x <= BANNER_SNAP) {
+    x = maxLeft;
+  }
+  if (y - BANNER_MARGIN <= BANNER_SNAP) {
+    y = BANNER_MARGIN;
+  } else if (maxTop - y <= BANNER_SNAP) {
+    y = maxTop;
+  }
+  return { left: x, top: y };
+}
 
 export interface OverlayAvoidRect {
   left: number;
@@ -31,6 +100,18 @@ export class Overlay {
   private avoid: OverlayAvoidRect | null = null;
   private cardRect: OverlayAvoidRect | null = null;
   private hit: HTMLDivElement | null = null;
+  private bannerPos: BannerPoint | null = null;
+  private bannerDrag: {
+    pointerId: number;
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+    moved: boolean;
+  } | null = null;
+  private readonly onViewportResize = (): void => {
+    this.layoutBanner(false);
+  };
 
   mount(
     onSelect: (detail: OverlayClickDetail) => void,
@@ -54,12 +135,19 @@ export class Overlay {
     host.style.cssText =
       "all:initial;position:fixed;z-index:2147483646;top:0;left:0;width:0;height:0;overflow:visible;pointer-events:none;";
     const shadow = host.attachShadow({ mode: "closed" });
-    shadow.innerHTML = `${styles}<div class="banner" hidden><span class="banner-mark" aria-hidden="true">V</span><span class="banner-copy"><strong class="banner-name">ValueTrace</strong><span class="banner-text"></span></span><button type="button" class="banner-close">Stop</button></div><div class="hit" hidden></div><div class="card" hidden></div>`;
+    shadow.innerHTML = `${styles}<div class="banner" hidden><span class="banner-grip" title="Drag to move" aria-hidden="true"></span><span class="banner-mark" aria-hidden="true">V</span><span class="banner-copy"><strong class="banner-name">ValueTrace</strong><span class="banner-text"></span></span><button type="button" class="banner-close">Stop</button></div><div class="hit" hidden></div><div class="card" hidden></div>`;
 
     this.host = host;
     this.shadow = shadow;
     this.card = shadow.querySelector(".card");
     this.hit = shadow.querySelector(".hit");
+    const banner = this.shadow.querySelector(".banner");
+    if (banner instanceof HTMLElement) {
+      banner.addEventListener("pointerdown", this.onBannerPointerDown as EventListener);
+      banner.addEventListener("pointermove", this.onBannerPointerMove as EventListener);
+      banner.addEventListener("pointerup", this.onBannerPointerUp as EventListener);
+      banner.addEventListener("pointercancel", this.onBannerPointerUp as EventListener);
+    }
     this.shadow.querySelector(".banner-close")?.addEventListener(
       "pointerdown",
       (event) => {
@@ -69,6 +157,7 @@ export class Overlay {
       },
       true,
     );
+    window.addEventListener("resize", this.onViewportResize);
     this.card?.addEventListener("pointerenter", () => {
       this.pointerInside = true;
       this.locked = true;
@@ -148,6 +237,9 @@ export class Overlay {
     banner.hidden = !active;
     banner.classList.remove("is-warn");
     label.textContent = active ? "Click a number" : "";
+    if (active) {
+      this.layoutBanner(false);
+    }
   }
 
   isInspecting(): boolean {
@@ -313,6 +405,8 @@ export class Overlay {
   destroy(): void {
     this.highlight(null);
     this.hideCard();
+    this.bannerDrag = null;
+    window.removeEventListener("resize", this.onViewportResize);
     this.host?.remove();
     this.host = null;
     this.shadow = null;
@@ -424,6 +518,122 @@ export class Overlay {
       button.removeAttribute("data-busy");
     }, 1200);
   }
+
+  private bannerElement(): HTMLElement | null {
+    const banner = this.shadow?.querySelector(".banner");
+    return banner instanceof HTMLElement ? banner : null;
+  }
+
+  private layoutBanner(dock: boolean): void {
+    const banner = this.bannerElement();
+    if (!banner || banner.hidden) {
+      return;
+    }
+    const width = banner.offsetWidth;
+    const height = banner.offsetHeight;
+    if (width < 1 || height < 1) {
+      return;
+    }
+    const saved = this.bannerPos ?? bannerMemory.__valueTraceBannerPos ?? null;
+    const next = saved
+      ? (dock ? dockBannerPosition : clampBannerPosition)(
+          saved.left,
+          saved.top,
+          width,
+          height,
+          window.innerWidth,
+          window.innerHeight,
+        )
+      : defaultBannerPosition(width, height, window.innerWidth, window.innerHeight);
+    this.commitBanner(banner, next, true);
+  }
+
+  private commitBanner(banner: HTMLElement, pos: BannerPoint, remember: boolean): void {
+    banner.style.left = `${Math.round(pos.left)}px`;
+    banner.style.top = `${Math.round(pos.top)}px`;
+    banner.style.right = "auto";
+    banner.style.bottom = "auto";
+    banner.style.transform = "none";
+    this.bannerPos = pos;
+    if (remember) {
+      bannerMemory.__valueTraceBannerPos = pos;
+    }
+  }
+
+  private onBannerPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+    const banner = this.bannerElement();
+    const node = event.target instanceof Element ? event.target : null;
+    if (!banner || node?.closest(".banner-close")) {
+      return;
+    }
+    const rect = banner.getBoundingClientRect();
+    this.bannerDrag = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      moved: false,
+    };
+    banner.setPointerCapture(event.pointerId);
+  };
+
+  private onBannerPointerMove = (event: PointerEvent): void => {
+    const drag = this.bannerDrag;
+    const banner = this.bannerElement();
+    if (!drag || !banner || event.pointerId !== drag.pointerId) {
+      return;
+    }
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) {
+      return;
+    }
+    drag.moved = true;
+    banner.classList.add("is-dragging");
+    event.preventDefault();
+    this.commitBanner(
+      banner,
+      clampBannerPosition(
+        drag.left + dx,
+        drag.top + dy,
+        banner.offsetWidth,
+        banner.offsetHeight,
+        window.innerWidth,
+        window.innerHeight,
+      ),
+      false,
+    );
+  };
+
+  private onBannerPointerUp = (event: PointerEvent): void => {
+    const drag = this.bannerDrag;
+    const banner = this.bannerElement();
+    if (!drag || !banner || event.pointerId !== drag.pointerId) {
+      return;
+    }
+    this.bannerDrag = null;
+    banner.classList.remove("is-dragging");
+    if (!drag.moved) {
+      return;
+    }
+    const rect = banner.getBoundingClientRect();
+    this.commitBanner(
+      banner,
+      dockBannerPosition(
+        rect.left,
+        rect.top,
+        banner.offsetWidth,
+        banner.offsetHeight,
+        window.innerWidth,
+        window.innerHeight,
+      ),
+      true,
+    );
+  };
 
   private placeAtCursor(clientX: number, clientY: number): void {
     if (!this.card) {
@@ -619,6 +829,9 @@ const styles = `
     bottom: 16px;
     transform: translateX(-50%);
     z-index: 2147483646;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -632,6 +845,18 @@ const styles = `
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
     font: 12px/1.3 "Segoe UI", system-ui, sans-serif;
     pointer-events: auto;
+  }
+  .banner.is-dragging {
+    cursor: grabbing;
+  }
+  .banner-grip {
+    flex: none;
+    width: 10px;
+    height: 16px;
+    margin-right: -2px;
+    background-image: radial-gradient(circle, #8b919c 1.15px, transparent 1.25px);
+    background-size: 5px 5px;
+    background-position: 0 1px;
   }
   .banner-mark {
     flex: none;
@@ -675,6 +900,7 @@ const styles = `
     color: #fff;
     font: 650 12px/1.2 "Segoe UI", system-ui, sans-serif;
     cursor: pointer;
+    touch-action: manipulation;
   }
   .banner-close:hover {
     background: #343b48;

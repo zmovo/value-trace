@@ -1,4 +1,9 @@
-import { isExtensionContextValid, isInvalidatedError, markExtensionContextDead } from "../shared/extension-context";
+import {
+  isBackForwardCacheDisconnect,
+  isExtensionContextValid,
+  isInvalidatedError,
+  markExtensionContextDead,
+} from "../shared/extension-context";
 import { sendToBackground } from "../shared/ingest";
 import { logError } from "../shared/logger";
 import { MessageType } from "../shared/message";
@@ -95,19 +100,30 @@ function announceReady(): void {
 }
 
 function watchExtensionContext(): void {
+  let port: chrome.runtime.Port | null = null;
   const connect = (): void => {
+    if (port) {
+      return;
+    }
     try {
-      const port = chrome.runtime.connect({ name: "inspect" });
-      port.onDisconnect.addListener(() => {
-        // The service worker going idle closes this port. That is not an
+      const next = chrome.runtime.connect({ name: "inspect" });
+      port = next;
+      next.onDisconnect.addListener(() => {
+        port = null;
+        const cached = isBackForwardCacheDisconnect();
+        // The service worker going idle also closes this port. That is not an
         // extension reload, so keep the content script able to start inspect.
         if (!isExtensionContextValid()) {
           inspector.stop();
           return;
         }
+        if (cached) {
+          return;
+        }
         window.setTimeout(connect, 300);
       });
     } catch (error) {
+      port = null;
       if (isInvalidatedError(error) || !isExtensionContextValid()) {
         markExtensionContextDead();
         inspector.stop();
@@ -116,5 +132,10 @@ function watchExtensionContext(): void {
       logError("Could not watch extension context", error);
     }
   };
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      connect();
+    }
+  });
   connect();
 }

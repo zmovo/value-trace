@@ -11,9 +11,9 @@ Until Pages is on, reviewers can still open the raw files after you publish the 
 
 ## Listing
 
-**Name:** ValueTrace
+**Name (45):** ValueTrace – Find the API for a Number
 
-**Summary (132):** See which API a number comes from. Click a number to start.
+**Summary (132):** Click a number to see which API it comes from.
 
 **Category:** Developer Tools
 
@@ -21,21 +21,17 @@ Until Pages is on, reviewers can still open the raw files after you publish the 
 
 **Detailed description:**
 
-ValueTrace shows which API response field produced a number on the page.
+Click a number to see which API it comes from.
 
-You see a dashboard number and should not have to hunt the Network panel. Start Inspect, click a blue-boxed number, and see the request, response field, and value. Copy any of them, download the call as a text file, or copy a cURL command.
-
-How to use
-1. Open the page that shows the number.
+1. Open the page.
 2. Click the ValueTrace icon and press Start Inspect.
-3. Click a blue number.
-4. Press Esc to close the card, or Stop on the ValueTrace chip to stop inspect.
+3. Click the number.
 
-Only one tab can inspect at a time. Refreshing this tab keeps inspect on. Opening another site in it stops inspect when the new page starts. Switching Chrome tabs does not.
+The card shows the request, the field, and the value. You can copy them, download the call, or copy cURL.
 
-Network bodies stay in the browser. They are not uploaded. DevTools → API Source is optional if you want the full JSON.
+Press Esc to close the card. Press Stop on the chip to stop. Refreshing this page keeps inspect on. Opening another site stops it. Data stays in the browser.
 
-**Single purpose:** Let a developer click a visible number on a web page and see which local API response field produced it.
+**Single purpose:** Click a number on a page and see which API it comes from.
 
 ## Privacy practices
 

@@ -12,6 +12,7 @@ import type {
   SelectSourcePayload,
   TabStatus,
 } from "../shared/types";
+import { canInjectContentScript, isUnscriptableError, isUnscriptableUrl } from "../shared/url";
 import { ValueIndex } from "../shared/value-index";
 
 interface TabState {
@@ -30,6 +31,7 @@ let inspectingTabId: number | null = null;
 const inspectWanted = new Set<number>();
 const inspectEpoch = new Map<number, number>();
 const inspectHost = new Map<number, string>();
+const restrictedTabs = new Set<number>();
 
 function stateFor(tabId: number): TabState {
   const existing = tabs.get(tabId);
@@ -55,6 +57,7 @@ function statusOf(tabId: number): TabStatus {
     inspectActive: state.inspectActive,
     hasDevTools: state.hasDevTools,
     lastCaptureUrl: lastCaptureUrls.get(tabId) ?? "",
+    restricted: restrictedTabs.has(tabId),
   };
 }
 
@@ -125,6 +128,30 @@ async function injectContent(tabId: number): Promise<void> {
   });
 }
 
+async function readTabUrl(tabId: number): Promise<string> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return tab.url || tab.pendingUrl || "";
+  } catch {
+    return "";
+  }
+}
+
+function abandonRestricted(tabId: number): void {
+  inspectWanted.delete(tabId);
+  inspectHost.delete(tabId);
+  restrictedTabs.add(tabId);
+  bumpEpoch(tabId);
+  const state = tabs.get(tabId);
+  if (state) {
+    state.inspectActive = false;
+  }
+  if (inspectingTabId === tabId) {
+    inspectingTabId = null;
+  }
+  broadcastStatus(tabId);
+}
+
 function bumpEpoch(tabId: number): number {
   const next = (inspectEpoch.get(tabId) ?? 0) + 1;
   inspectEpoch.set(tabId, next);
@@ -174,11 +201,25 @@ async function applyInspect(tabId: number, active: boolean): Promise<boolean> {
   const type = active ? MessageType.INSPECT_MODE_START : MessageType.INSPECT_MODE_STOP;
   let delivered = await sendToTab(tabId, { type, payload: { tabId } });
   if (!delivered && active && inspectWanted.has(tabId)) {
-    try {
-      await injectContent(tabId);
-      delivered = await sendToTab(tabId, { type, payload: { tabId } });
-    } catch (error) {
-      logError("Could not inject content script", error);
+    const url = await readTabUrl(tabId);
+    if (!canInjectContentScript(url)) {
+      // Chrome omits the Web Store URL, so executeScript would throw
+      // "The extensions gallery cannot be scripted."
+      abandonRestricted(tabId);
+    } else {
+      try {
+        await injectContent(tabId);
+        delivered = await sendToTab(tabId, { type, payload: { tabId } });
+        if (delivered) {
+          restrictedTabs.delete(tabId);
+        }
+      } catch (error) {
+        if (isUnscriptableError(error)) {
+          abandonRestricted(tabId);
+        } else {
+          logError("Could not inject content script", error);
+        }
+      }
     }
   }
   if ((inspectEpoch.get(tabId) ?? 0) !== epoch || (active && !inspectWanted.has(tabId))) {
@@ -217,6 +258,14 @@ async function reattachInspect(tabId: number, epoch: number): Promise<void> {
 }
 
 function continueInspectAfterNavigation(tabId: number, url: string): void {
+  if (isUnscriptableUrl(url)) {
+    abandonRestricted(tabId);
+    return;
+  }
+  if (restrictedTabs.has(tabId)) {
+    restrictedTabs.delete(tabId);
+    broadcastStatus(tabId);
+  }
   if (!inspectWanted.has(tabId)) {
     return;
   }
@@ -305,6 +354,9 @@ function textToDataUrl(text: string): string {
 
 chrome.runtime.onConnect.addListener((port) => {
   const name = port.name as PortName;
+  port.onDisconnect.addListener(() => {
+    void chrome.runtime.lastError;
+  });
   if (name === "inspect") {
     return;
   }
@@ -387,6 +439,7 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 
   port.onDisconnect.addListener(() => {
+    void chrome.runtime.lastError;
     if (boundTabId == null) {
       return;
     }
@@ -578,6 +631,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   inspectWanted.delete(tabId);
   inspectEpoch.delete(tabId);
   inspectHost.delete(tabId);
+  restrictedTabs.delete(tabId);
   tabs.delete(tabId);
   lastSelections.delete(tabId);
   lastCaptureUrls.delete(tabId);

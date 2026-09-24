@@ -1,4 +1,4 @@
-import { isExtensionContextValid, isInvalidatedError } from "../shared/extension-context";
+import { isExtensionContextValid, isInvalidatedError, portDisconnectReason } from "../shared/extension-context";
 import { sendToBackground } from "../shared/ingest";
 import { log, logError } from "../shared/logger";
 import { MessageType, type PortName } from "../shared/message";
@@ -25,6 +25,7 @@ function connect(): void {
       }
     });
     port.onDisconnect.addListener(() => {
+      portDisconnectReason();
       if (!isExtensionContextValid()) {
         return;
       }

@@ -24,3 +24,16 @@ export function isInvalidatedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   return message.includes("Extension context invalidated");
 }
+
+/** Read lastError during port disconnect so Chrome does not log it as unchecked. */
+export function portDisconnectReason(): string {
+  try {
+    return chrome.runtime.lastError?.message ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function isBackForwardCacheDisconnect(reason = portDisconnectReason()): boolean {
+  return reason.includes("back/forward cache");
+}

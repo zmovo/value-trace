@@ -104,6 +104,8 @@ export interface TabStatus {
   inspectActive: boolean;
   hasDevTools: boolean;
   lastCaptureUrl: string;
+  /** Chrome will not run this extension on the tab (Web Store, chrome://, and similar). */
+  restricted?: boolean;
 }
 
 export interface RawNetworkCapture {

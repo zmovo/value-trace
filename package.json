@@ -1,8 +1,8 @@
 {
   "name": "value-trace",
-  "version": "0.1.26",
+  "version": "0.1.28",
   "private": true,
-  "description": "See which API a number comes from. Click a number to start.",
+  "description": "Click a number to see which API it comes from.",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",

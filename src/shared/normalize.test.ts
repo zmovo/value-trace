@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import { flattenJson } from "./json-flatten";
 import { extractValues, normalizeValue, primaryKeyOf, stripNumericTokens } from "./normalize";
 import { pickLikelyMatches, scoreField, tokenizeHints } from "./ui-context";
-import { apiNameSuffix, fieldLabel, presentJsonPath, presentRequestUrl } from "./url";
+import {
+  apiNameSuffix,
+  canInjectContentScript,
+  fieldLabel,
+  isUnscriptableError,
+  isUnscriptableUrl,
+  presentJsonPath,
+  presentRequestUrl,
+} from "./url";
 import { ValueIndex } from "./value-index";
 import type { CapturedResponse } from "./types";
 
@@ -242,6 +250,29 @@ describe("ValueIndex", () => {
     const matches = index.lookup(["66860"], "66860", "https://example.test/");
     expect(matches).toHaveLength(1);
     expect(matches[0].requestId).toBe("r3");
+  });
+});
+
+describe("isUnscriptableUrl", () => {
+  it("blocks the Chrome Web Store and browser pages", () => {
+    expect(isUnscriptableUrl("https://chromewebstore.google.com/detail/abc")).toBe(true);
+    expect(isUnscriptableUrl("https://chrome.google.com/webstore/detail/abc")).toBe(true);
+    expect(isUnscriptableUrl("chrome://extensions")).toBe(true);
+    expect(isUnscriptableUrl("https://example.com/dashboard")).toBe(false);
+    expect(isUnscriptableUrl("")).toBe(false);
+  });
+
+  it("recognizes Chrome's gallery scripting error", () => {
+    expect(isUnscriptableError(new Error("The extensions gallery cannot be scripted."))).toBe(true);
+    expect(isUnscriptableError({ message: "The extensions gallery cannot be scripted." })).toBe(true);
+    expect(isUnscriptableError(new Error("Cannot access a chrome:// URL"))).toBe(true);
+    expect(isUnscriptableError(new Error("Frame with ID 0 was removed."))).toBe(false);
+  });
+
+  it("injects only on ordinary web pages", () => {
+    expect(canInjectContentScript("https://example.com/dashboard")).toBe(true);
+    expect(canInjectContentScript("https://chromewebstore.google.com/detail/abc")).toBe(false);
+    expect(canInjectContentScript("")).toBe(false);
   });
 });
 

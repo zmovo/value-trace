@@ -1,5 +1,5 @@
 import { startNetworkCollector } from "../devtools/network-collector";
-import { isExtensionContextValid, isInvalidatedError } from "../shared/extension-context";
+import { isExtensionContextValid, isInvalidatedError, portDisconnectReason } from "../shared/extension-context";
 import { MessageType, type PortName } from "../shared/message";
 import { showChromeNetwork } from "../shared/reveal";
 import type { PanelSelection, TabStatus } from "../shared/types";
@@ -47,6 +47,7 @@ function connect(): chrome.runtime.Port | null {
     });
 
     next.onDisconnect.addListener(() => {
+      portDisconnectReason();
       if (!isExtensionContextValid()) {
         showReloadedMessage();
         return;
@@ -104,6 +105,15 @@ openNetworkBtn.addEventListener("click", () => {
 });
 
 function renderStatus(status: TabStatus): void {
+  if (status.restricted) {
+    statusEl.textContent = "Chrome blocks extensions on this page.";
+    startBtn.disabled = true;
+    stopBtn.disabled = true;
+    if (detailEl.hidden) {
+      emptyEl.textContent = "Open a normal website, then start inspect.";
+    }
+    return;
+  }
   const inspect = status.inspectActive ? "Inspect ON" : "Inspect OFF";
   const last = status.lastCaptureUrl ? ` · last ${displayUrl(status.lastCaptureUrl)}` : "";
   statusEl.textContent = `${status.valueCount} indexed values · ${status.requestCount} requests · ${inspect}${last}`;

@@ -1,4 +1,9 @@
-import { isExtensionContextValid, isInvalidatedError, markExtensionContextDead } from "../shared/extension-context";
+import {
+  isExtensionContextValid,
+  isInvalidatedError,
+  markExtensionContextDead,
+  portDisconnectReason,
+} from "../shared/extension-context";
 import { log, logError } from "../shared/logger";
 import { toCurl } from "../shared/exchange";
 import { MessageType } from "../shared/message";
@@ -55,6 +60,10 @@ export class Inspector {
     }
     try {
       this.keepAlive = chrome.runtime.connect({ name: "inspect" });
+      this.keepAlive.onDisconnect.addListener(() => {
+        portDisconnectReason();
+        this.keepAlive = null;
+      });
     } catch (error) {
       this.keepAlive = null;
       if (isInvalidatedError(error)) {

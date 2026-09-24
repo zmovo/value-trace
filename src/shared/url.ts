@@ -135,6 +135,83 @@ export function isMetadataPath(path: string): boolean {
   return META_LEAF.test(jsonPathLeaf(path));
 }
 
+const RESTRICTED_SCHEME =
+  /^(chrome|chrome-extension|chrome-untrusted|chrome-search|edge|devtools|view-source|brave|opera|vivaldi):/i;
+
+/** Pages Chrome will not let an extension inject into, including the Web Store. */
+export function isUnscriptableUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const scheme = trimmed.slice(0, trimmed.indexOf(":") + 1);
+  if (RESTRICTED_SCHEME.test(scheme)) {
+    return true;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:" && parsed.protocol !== "file:") {
+      return true;
+    }
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    if (host === "chromewebstore.google.com") {
+      return true;
+    }
+    if (host === "chrome.google.com" && (path === "/webstore" || path.startsWith("/webstore/"))) {
+      return true;
+    }
+    if (host === "microsoftedge.microsoft.com" && (path === "/addons" || path.startsWith("/addons/"))) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+/**
+ * True only when Chrome has shown us a page URL we are allowed to inject into.
+ * The Web Store hides its URL, so a missing URL is not scriptable.
+ */
+export function canInjectContentScript(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed || isUnscriptableUrl(trimmed)) {
+    return false;
+  }
+  try {
+    const protocol = new URL(trimmed).protocol;
+    return protocol === "http:" || protocol === "https:" || protocol === "file:";
+  } catch {
+    return false;
+  }
+}
+
+/** Chrome's scripting API error when the tab is the Web Store or another blocked page. */
+export function isUnscriptableError(error: unknown): boolean {
+  return /cannot be scripted|extensions gallery|cannot access a chrome|chromewebstore\.google\.com|chrome\.google\.com\/webstore/i.test(
+    errorText(error),
+  );
+}
+
+function errorText(error: unknown): string {
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error instanceof Error) {
+    return `${error.name} ${error.message}`;
+  }
+  if (error && typeof error === "object") {
+    const message = "message" in error ? String(error.message) : "";
+    try {
+      return `${message} ${JSON.stringify(error)}`;
+    } catch {
+      return message;
+    }
+  }
+  return String(error ?? "");
+}
+
 export function isXhrOrFetch(resourceType: string): boolean {
   const type = resourceType.toLowerCase();
   return type === "xhr" || type === "fetch";

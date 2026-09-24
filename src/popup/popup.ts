@@ -31,6 +31,10 @@ async function activeTabId(): Promise<number | null> {
 }
 
 function showStatus(status: TabStatus): void {
+  if (status.restricted) {
+    paint("warn", "Unavailable", "Chrome blocks extensions on this page", "Start Inspect", false);
+    return;
+  }
   if (status.inspectActive) {
     paint("on", "Inspecting", "Click a number on the page", "Stop Inspect", true);
     return;
@@ -68,6 +72,10 @@ actionBtn.addEventListener("click", async () => {
   const stopping = actionBtn.dataset.action === "stop";
   const type = stopping ? MessageType.INSPECT_MODE_STOP : MessageType.INSPECT_MODE_START;
   chrome.runtime.sendMessage({ type, payload: { tabId } }, (response: { ok?: boolean; payload?: TabStatus }) => {
+    if (response?.payload?.restricted) {
+      showStatus(response.payload);
+      return;
+    }
     if (!stopping && (chrome.runtime.lastError || response?.ok === false)) {
       paint("warn", "Not started", "Refresh the page, then try again", "Start Inspect", true);
       return;
